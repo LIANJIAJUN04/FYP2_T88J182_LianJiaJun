@@ -196,6 +196,10 @@ wearable-health/
 │   └── data/
 │       └── readings.csv
 │
+├── supabase/
+│   └── migrations/
+│       └── 20260511000000_initial_schema.sql   # patients, sessions, alerts
+│
 ├── docker-compose.yml
 └── README.md
 ```
@@ -644,7 +648,7 @@ features = [
 - [x] Insert a test patient row
 
 **Done when:** Patient table exists, admin can authenticate.
-**Completed:** 2026-05-11 — project at `rzzxrlfgmkdoarglcpdw.supabase.co`; schema SQL at `backend/local/schema.sql`; verified via `test_supabase.py`.
+**Completed:** 2026-05-11 — project at `rzzxrlfgmkdoarglcpdw.supabase.co`; schema at `supabase/migrations/20260511000000_initial_schema.sql`; verified via `backend/local/test_supabase.py`.
 
 ---
 
