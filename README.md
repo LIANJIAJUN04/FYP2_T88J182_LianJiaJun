@@ -41,7 +41,18 @@ An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine
 MediSync/
 ├── firmware/               # ESP32 Arduino firmware
 ├── backend/
-│   ├── local/              # FastAPI — bedside machine
+│   ├── local/              # FastAPI — bedside machine (localhost:8000)
+│   │   ├── main.py         # App entry point, state, startup
+│   │   ├── status.py       # Rule-based get_status()
+│   │   ├── database.py     # Local InfluxDB write client
+│   │   ├── supabase_client.py  # Patient + session ops
+│   │   ├── sync.py         # Async queue + cloud sync worker
+│   │   ├── routers/
+│   │   │   ├── patients.py # POST /api/patients
+│   │   │   ├── session.py  # login / logout / active
+│   │   │   ├── readings.py # POST /api/readings
+│   │   │   └── stream.py   # GET /api/stream (SSE)
+│   │   └── requirements.txt
 │   └── cloud/              # FastAPI — Railway
 ├── frontend/
 │   ├── bedside/            # Next.js — localhost
@@ -160,7 +171,7 @@ See `CLAUDE.md` for the full variable reference.
 | 1 | Local InfluxDB setup | ✅ Done |
 | 2 | InfluxDB Cloud setup | ✅ Done |
 | 3 | Supabase schema + auth | ✅ Done |
-| 4 | Local FastAPI backend | Pending |
+| 4 | Local FastAPI backend | ✅ Done |
 | 5 | Cloud FastAPI backend | Pending |
 | 6 | Bedside frontend | Pending |
 | 7 | Admin frontend | Pending |

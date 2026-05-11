@@ -123,7 +123,7 @@ wearable-health/
 │   ├── local/                       # Runs on bedside machine
 │   │   ├── main.py                  # FastAPI app, holds active_patient_id state
 │   │   ├── database.py              # Local InfluxDB client
-│   │   ├── supabase.py              # Supabase client (patient + session ops)
+│   │   ├── supabase_client.py       # Supabase client (patient + session ops)
 │   │   ├── sync.py                  # Async queue + cloud sync worker
 │   │   ├── status.py                # Rule-based status logic
 │   │   ├── routers/
@@ -652,21 +652,22 @@ features = [
 
 ---
 
-### Phase 4 — Local FastAPI Backend
-- [ ] Set up `backend/local/` — FastAPI, `influxdb-client`, `supabase-py`, `python-dotenv`
-- [ ] Implement `status.py` — `get_status(spo2, bpm, temperature)` returns `normal / warning / danger`
-- [ ] Implement `app.state.active_patient_id = None`
-- [ ] Implement `POST /api/patients` — register, Supabase row, open session, set active patient
-- [ ] Implement `POST /api/session/login` — validate IC + nurse password, open session, set active patient
-- [ ] Implement `POST /api/session/logout` — clear active patient, close session
-- [ ] Implement `GET /api/session/active` — return current patient or null
-- [ ] Implement `POST /api/readings` — run `get_status()`, tag with patient_id, write local InfluxDB, queue cloud sync
-- [ ] Implement `GET /api/stream` — SSE, stream latest reading every 1s including `status` field
-- [ ] Implement `cloud_sync_worker` background task
-- [ ] Add `X-Device-Secret` middleware
-- [ ] Test all endpoints with curl / Postman
+### Phase 4 — Local FastAPI Backend ✅
+- [x] Set up `backend/local/` — FastAPI, `influxdb-client`, `supabase-py`, `python-dotenv`
+- [x] Implement `status.py` — `get_status(spo2, bpm, temperature)` returns `normal / warning / danger`
+- [x] Implement `app.state.active_patient_id = None`
+- [x] Implement `POST /api/patients` — register, Supabase row, open session, set active patient
+- [x] Implement `POST /api/session/login` — validate IC + nurse password, open session, set active patient
+- [x] Implement `POST /api/session/logout` — clear active patient, close session
+- [x] Implement `GET /api/session/active` — return current patient or null
+- [x] Implement `POST /api/readings` — run `get_status()`, tag with patient_id, write local InfluxDB, queue cloud sync
+- [x] Implement `GET /api/stream` — SSE, stream latest reading every 1s including `status` field
+- [x] Implement `cloud_sync_worker` background task
+- [x] Add `X-Device-Secret` check in readings router
+- [x] Test all endpoints with curl
 
 **Done when:** POST reading → status calculated → stored in InfluxDB → appears in SSE stream.
+**Completed:** 2026-05-11 — supabase client named `supabase_client.py` (avoids shadowing the `supabase` package); SSE stream reads from `app.state.last_reading` (updated on each POST /api/readings); all three status levels verified via curl.
 
 ---
 
