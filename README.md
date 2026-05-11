@@ -159,6 +159,23 @@ npm run dev
 
 Open `http://localhost:3001` (port 3000 may be occupied on some machines).
 
+### Admin Frontend (local dev)
+
+```bash
+cd frontend/admin
+npm run dev
+```
+
+Open `http://localhost:3002`. Log in with your Supabase admin email and password.
+
+Requires `frontend/admin/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=https://medisync-cloud-api-production.up.railway.app
+NEXT_PUBLIC_SUPABASE_URL=https://rzzxrlfgmkdoarglcpdw.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
 ### Cloud Backend (local dev)
 
 ```bash
@@ -202,7 +219,7 @@ See `CLAUDE.md` for the full variable reference.
 | Service | Platform | URL / Config |
 |---|---|---|
 | Cloud backend | Railway | `https://medisync-cloud-api-production.up.railway.app` — root: `/backend/cloud`, start: `uvicorn main:app --host 0.0.0.0 --port $PORT` |
-| Admin frontend | Vercel | Root: `/frontend/admin`, framework: Next.js |
+| Admin frontend | Vercel | `https://medi-sync-eta.vercel.app` — root: `/frontend/admin`, framework: Next.js (declared via `vercel.json`) |
 | Local InfluxDB | Docker | `docker compose up -d` |
 
 ---
@@ -217,7 +234,7 @@ See `CLAUDE.md` for the full variable reference.
 | 4 | Local FastAPI backend | ✅ Done |
 | 5 | Cloud FastAPI backend | ✅ Done |
 | 6 | Bedside frontend | ✅ Done |
-| 7 | Admin frontend | Pending |
+| 7 | Admin frontend | ✅ Done |
 | 8 | ESP32 firmware | Pending |
 | 9 | ML anomaly detection | Pending |
 | 10 | Polish & hardening | Pending |
