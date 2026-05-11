@@ -1,5 +1,11 @@
 # CLAUDE.md — Wearable Health Monitor
 
+## Rules for Claude Code
+
+- **Never run `git push` or any GitHub/remote operations.** The user handles all pushes and PRs themselves. Only commit locally — never push.
+
+---
+
 ## Project Overview
 
 A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and temperature sensors is connected via USB to a bedside machine. Readings are written locally for near-zero latency bedside display, and synced asynchronously to the cloud for remote admin monitoring. Each patient has their own session and isolated reading history in InfluxDB via `patient_id` tagging.
