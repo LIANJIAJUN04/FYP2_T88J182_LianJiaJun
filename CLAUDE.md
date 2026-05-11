@@ -712,24 +712,26 @@ features = [
 
 ---
 
-### Phase 7 — Admin Frontend (Next.js)
-- [ ] Scaffold Next.js in `frontend/admin/`
-- [ ] Set `NEXT_PUBLIC_API_URL` to Railway URL
-- [ ] Build `/` login — Supabase Auth
-- [ ] Build `middleware.ts` — redirect to `/` if no session
-- [ ] Build `/dashboard`:
-  - [ ] Summary cards (total patients, active sessions, unresolved alerts, critical count)
-  - [ ] Patients table with status column colour coded
-  - [ ] "View" button per row
-- [ ] Build `/patient/[id]`:
-  - [ ] `StatusCard` (live, from cloud SSE)
-  - [ ] Live gauges + chart
-  - [ ] History chart with date picker
-  - [ ] Session log
-  - [ ] Alert log
+### Phase 7 — Admin Frontend (Next.js) ✅
+- [x] Scaffold Next.js in `frontend/admin/`
+- [x] Set `NEXT_PUBLIC_API_URL` to Railway URL
+- [x] Build `/` login — Supabase Auth
+- [x] Build `proxy.ts` — redirect to `/` if no session (Next.js 16 convention)
+- [x] Build `/dashboard`:
+  - [x] Summary cards (total patients, active sessions, unresolved alerts, critical count)
+  - [x] Patients table with status column colour coded + search + ward filter
+  - [x] "View" button per row
+- [x] Build `/patient/[id]`:
+  - [x] `StatusCard` (live, from cloud SSE via `?token=` query param)
+  - [x] Live gauges + chart
+  - [x] History chart with date picker
+  - [x] Session log
+  - [x] Alert log
 - [ ] Deploy to Vercel
 
 **Done when:** Admin logs in, sees patient list, clicks View, sees live StatusCard + chart.
+
+**Completed:** 2026-05-11 — Next.js 16 on `localhost:3002`; dark navy premium UI with Framer Motion, SVG arc gauges, Recharts; `proxy.ts` protects `/dashboard` and `/patient/*` via `sb-token` cookie; cloud SSE uses `?token=` query param; summary cards derived from patients + alerts + sessions; full search + status/ward filter in patient table; patient detail shows live SSE stream + history chart with date picker + session log + alert log. Fill in `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local` before running.
 
 ---
 
