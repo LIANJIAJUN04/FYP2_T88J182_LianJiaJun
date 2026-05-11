@@ -26,7 +26,7 @@ An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine
 | Firmware | ESP32, Arduino framework | Device |
 | Local backend | FastAPI | Bedside machine (localhost:8000) |
 | Cloud backend | FastAPI | Railway |
-| Time-series (local) | InfluxDB via Docker | Bedside machine (localhost:8086) |
+| Time-series (local) | InfluxDB via Docker | Bedside machine (localhost:8087) |
 | Time-series (cloud) | InfluxDB Cloud (Singapore) | Cloud |
 | Relational DB | Supabase Postgres | Cloud |
 | Auth | Supabase Auth (admin) + shared nurse password (bedside) | Cloud |
@@ -125,6 +125,8 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+> **Note:** Local InfluxDB runs on port **8087** (not 8086). UI at `http://localhost:8087`, token: `medisync-local-token`.
+
 ### Environment Variables
 
 Copy the relevant `.env.example` files and fill in your credentials:
@@ -153,7 +155,7 @@ See `CLAUDE.md` for the full variable reference.
 
 | Phase | Description | Status |
 |---|---|---|
-| 1 | Local InfluxDB setup | Pending |
+| 1 | Local InfluxDB setup | ✅ Done |
 | 2 | InfluxDB Cloud setup | Pending |
 | 3 | Supabase schema + auth | Pending |
 | 4 | Local FastAPI backend | Pending |
