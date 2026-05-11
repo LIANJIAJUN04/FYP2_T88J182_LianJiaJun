@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Activity, Mail, Lock, Eye, EyeOff, AlertCircle, Shield } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { setToken, getToken } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -24,7 +24,7 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: authErr } = await getSupabase().auth.signInWithPassword({ email, password });
       if (authErr) throw authErr;
       if (data.session?.access_token) {
         setToken(data.session.access_token);

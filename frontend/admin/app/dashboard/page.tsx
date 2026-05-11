@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -7,7 +9,7 @@ import {
   Activity, Users, AlertTriangle, HeartPulse, Radio,
   LogOut, RefreshCw,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { getToken, clearToken } from "@/lib/auth";
 import { fetchPatients, fetchAlerts, fetchSessions } from "@/lib/api";
 import { SummaryCard } from "@/components/SummaryCard/SummaryCard";
@@ -74,7 +76,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const token = getToken();
     if (!token) { router.replace("/"); return; }
-    supabase.auth.getUser().then(({ data }) => {
+    getSupabase().auth.getUser().then(({ data }) => {
       if (data?.user?.email) setAdminEmail(data.user.email);
     });
     loadData();
@@ -82,7 +84,7 @@ export default function DashboardPage() {
 
   const handleLogout = async () => {
     setLoggingOut(true);
-    await supabase.auth.signOut();
+    await getSupabase().auth.signOut();
     clearToken();
     router.replace("/");
   };
