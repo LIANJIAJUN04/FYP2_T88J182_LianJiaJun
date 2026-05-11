@@ -47,6 +47,8 @@ MediSync/
 │   ├── bedside/            # Next.js — localhost
 │   └── admin/              # Next.js — Vercel
 ├── ml/                     # Anomaly detection notebooks + data
+├── supabase/
+│   └── migrations/         # SQL migration files (run in Supabase SQL editor)
 ├── docker-compose.yml      # Local InfluxDB
 └── README.md
 ```
@@ -156,8 +158,8 @@ See `CLAUDE.md` for the full variable reference.
 | Phase | Description | Status |
 |---|---|---|
 | 1 | Local InfluxDB setup | ✅ Done |
-| 2 | InfluxDB Cloud setup | Pending |
-| 3 | Supabase schema + auth | Pending |
+| 2 | InfluxDB Cloud setup | ✅ Done |
+| 3 | Supabase schema + auth | ✅ Done |
 | 4 | Local FastAPI backend | Pending |
 | 5 | Cloud FastAPI backend | Pending |
 | 6 | Bedside frontend | Pending |
