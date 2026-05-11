@@ -610,16 +610,17 @@ features = [
 
 ---
 
-### Phase 1 — Local InfluxDB Setup
-- [ ] Install Docker Desktop on bedside machine
-- [ ] Create `docker-compose.yml`
-- [ ] Run `docker compose up -d`
-- [ ] Open `http://localhost:8086`, complete setup
-- [ ] Create bucket `health_local`, 7-day retention
-- [ ] Generate API token, save to `backend/local/.env`
-- [ ] Test write + read with Python script
+### Phase 1 — Local InfluxDB Setup ✅
+- [x] Install Docker Desktop on bedside machine
+- [x] Create `docker-compose.yml`
+- [x] Run `docker compose up -d`
+- [x] Open `http://localhost:8087`, complete setup (port 8087 — 8086 occupied by another project)
+- [x] Create bucket `health_local`, 7-day retention (auto-created via `DOCKER_INFLUXDB_INIT_*` env vars)
+- [x] Generate API token, save to `backend/local/.env` (token: `medisync-local-token`, set via `DOCKER_INFLUXDB_INIT_ADMIN_TOKEN`)
+- [x] Test write + read with Python script (`backend/local/test_influx.py`)
 
 **Done when:** Test point written and queried via Python.
+**Completed:** 2026-05-11 — image pinned to `influxdb:2.7.6`; UI at `http://localhost:8087`.
 
 ---
 
