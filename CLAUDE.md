@@ -196,6 +196,10 @@ wearable-health/
 │   └── data/
 │       └── readings.csv
 │
+├── supabase/
+│   └── migrations/
+│       └── 20260511000000_initial_schema.sql   # patients, sessions, alerts
+│
 ├── docker-compose.yml
 └── README.md
 ```
@@ -636,14 +640,15 @@ features = [
 
 ---
 
-### Phase 3 — Supabase Setup
-- [ ] Create Supabase project (Singapore region)
-- [ ] Run schema SQL in SQL editor
-- [ ] Enable Supabase Auth, create first admin account
-- [ ] Save `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
-- [ ] Insert a test patient row
+### Phase 3 — Supabase Setup ✅
+- [x] Create Supabase project (Singapore region)
+- [x] Run schema SQL in SQL editor
+- [x] Enable Supabase Auth, create first admin account
+- [x] Save `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
+- [x] Insert a test patient row
 
 **Done when:** Patient table exists, admin can authenticate.
+**Completed:** 2026-05-11 — project at `rzzxrlfgmkdoarglcpdw.supabase.co`; schema at `supabase/migrations/20260511000000_initial_schema.sql`; verified via `backend/local/test_supabase.py`.
 
 ---
 
