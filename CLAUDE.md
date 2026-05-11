@@ -671,20 +671,22 @@ features = [
 
 ---
 
-### Phase 5 — Cloud FastAPI Backend
-- [ ] Set up `backend/cloud/` — FastAPI, `influxdb-client`, `supabase-py`
-- [ ] Copy `status.py` from local backend
-- [ ] Implement Supabase Auth JWT middleware
-- [ ] Implement `GET /api/patients`
-- [ ] Implement `GET /api/patients/:id`
-- [ ] Implement `GET /api/patients/:id/stream` — SSE includes `status` field
-- [ ] Implement `GET /api/patients/:id/history`
-- [ ] Implement `GET /api/patients/:id/sessions`
-- [ ] Implement `GET /api/alerts`
-- [ ] Add CORS (allow Vercel domain)
-- [ ] Deploy to Railway
+### Phase 5 — Cloud FastAPI Backend ✅
+- [x] Set up `backend/cloud/` — FastAPI, `influxdb-client`, `supabase-py`
+- [x] Copy `status.py` from local backend
+- [x] Implement Supabase Auth JWT middleware (`auth.py` — `require_auth` dependency, accepts Bearer header or `?token=` query param for SSE)
+- [x] Implement `GET /api/patients`
+- [x] Implement `GET /api/patients/:id`
+- [x] Implement `GET /api/patients/:id/stream` — SSE includes `status` field, polls InfluxDB Cloud every 2s
+- [x] Implement `GET /api/patients/:id/history` — `?from=YYYY-MM-DD&to=YYYY-MM-DD`
+- [x] Implement `GET /api/patients/:id/sessions`
+- [x] Implement `GET /api/alerts` — includes joined patient name, ic_number, ward
+- [x] Add CORS — configurable via `ALLOWED_ORIGINS` env var (comma-separated)
+- [x] Deploy to Railway
 
 **Done when:** Patient history + live stream queryable from Railway with valid auth token.
+
+**Completed:** 2026-05-11 — deployed to Railway at `https://medisync-cloud-api-production.up.railway.app`; all env vars set via `railway variables set`; `/health` returns `{"status":"ok"}`; unauthenticated requests return 401 as expected.
 
 ---
 
