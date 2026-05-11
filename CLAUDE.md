@@ -690,24 +690,25 @@ features = [
 
 ---
 
-### Phase 6 — Bedside Frontend (Next.js)
-- [ ] Scaffold Next.js in `frontend/bedside/`
-- [ ] Set `NEXT_PUBLIC_API_URL=http://localhost:8000`
-- [ ] Build `/` index — New Patient / Existing Patient buttons
-- [ ] Build `/register` — patient registration form
-- [ ] Build `/login` — IC + nurse password
-- [ ] Build `middleware.ts` — redirect `/dashboard` → `/` if no active patient
-- [ ] Build `StatusCard` component:
-  - [ ] Displays STATUS label and NORMAL / WARNING / DANGER
-  - [ ] Green for normal, amber for warning, red + pulse animation for danger
-  - [ ] Updates on every SSE event
-- [ ] Build `GaugeCard` — SpO₂, BPM, Temp with colour coding
-- [ ] Build `LiveChart` — Recharts scrolling time-series, last 60 readings
-- [ ] Build `/dashboard` — StatusCard prominent at top, GaugeCards below, LiveChart below that
-- [ ] Add logout button — POST `/api/session/logout`, redirect to `/`
-- [ ] Run `npm run dev`
+### Phase 6 — Bedside Frontend (Next.js) ✅
+- [x] Scaffold Next.js in `frontend/bedside/`
+- [x] Set `NEXT_PUBLIC_API_URL=http://localhost:8000`
+- [x] Build `/` index — New Patient / Existing Patient buttons
+- [x] Build `/register` — patient registration form
+- [x] Build `/login` — IC + nurse password
+- [x] Build `proxy.ts` — redirect `/dashboard` → `/` if no active patient (Next.js 16 proxy convention replaces middleware.ts)
+- [x] Build `StatusCard` component:
+  - [x] Displays STATUS label and NORMAL / WARNING / DANGER
+  - [x] Green for normal, amber for warning, red + pulse animation for danger
+  - [x] Updates on every SSE event
+- [x] Build `GaugeCard` — SpO₂, BPM, Temp with SVG arc gauge and colour coding
+- [x] Build `LiveChart` — Recharts scrolling time-series, last 60 readings, tab per metric
+- [x] Build `/dashboard` — StatusCard prominent at top, GaugeCards below, LiveChart below that
+- [x] Add logout button — POST `/api/session/logout`, redirect to `/`
+- [x] Run `npm run dev`
 
 **Done when:** Full nurse flow — register → dashboard → StatusCard updates live → logout → index.
+**Completed:** 2026-05-11 — Next.js 16 on `localhost:3001` (3000 occupied); uses `proxy.ts` named export instead of deprecated `middleware.ts`; dark navy UI with Framer Motion animations, SVG arc gauges, Recharts live chart with SpO₂/BPM/Temp tabs; SSE auto-reconnects after 3s; CORS updated in local backend to allow both ports 3000 and 3001; startup script at `start-bedside.sh`.
 
 ---
 
