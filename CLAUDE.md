@@ -624,14 +624,15 @@ features = [
 
 ---
 
-### Phase 2 — InfluxDB Cloud Setup
-- [ ] Sign up at `cloud2.influxdata.com` — Singapore region
-- [ ] Create bucket `health_cloud`, 30-day retention
-- [ ] Generate API token (write + read)
-- [ ] Save credentials to env files
-- [ ] Test write from local Python script
+### Phase 2 — InfluxDB Cloud Setup ✅
+- [x] Sign up at `cloud2.influxdata.com` — Singapore region
+- [x] Create bucket `health_cloud`, 30-day retention
+- [x] Generate API token (write + read)
+- [x] Save credentials to env files
+- [x] Test write from local Python script
 
 **Done when:** Test point appears in InfluxDB Cloud UI.
+**Completed:** 2026-05-11 — Singapore region (ap-southeast-1); test script at `backend/local/test_influx_cloud.py`.
 
 ---
 
