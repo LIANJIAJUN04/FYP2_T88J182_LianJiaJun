@@ -30,7 +30,7 @@ An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine
 | Time-series (cloud) | InfluxDB Cloud (Singapore) | Cloud |
 | Relational DB | Supabase Postgres | Cloud |
 | Auth | Supabase Auth (admin) + shared nurse password (bedside) | Cloud |
-| Bedside frontend | Next.js | localhost:3000 |
+| Bedside frontend | Next.js | localhost:3001 |
 | Admin frontend | Next.js | Vercel |
 
 ---
@@ -133,22 +133,31 @@ Danger state pulses red on the StatusCard. A separate ML anomaly detection layer
 
 ### Bedside Setup
 
+**One-command start (recommended):**
+
+```bash
+./start-bedside.sh
+```
+
+Opens `http://localhost:3001` automatically. Kills stale processes on 8000/3001, starts backend, waits for readiness, then starts frontend. `Ctrl+C` stops both.
+
+**Manual start:**
+
 ```bash
 # 1. Start local InfluxDB
 docker compose up -d
 
 # 2. Start local backend
 cd backend/local
-pip install -r requirements.txt
+source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000
 
 # 3. Start bedside frontend
 cd frontend/bedside
-npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:3001` (port 3000 may be occupied on some machines).
 
 ### Cloud Backend (local dev)
 
@@ -207,7 +216,7 @@ See `CLAUDE.md` for the full variable reference.
 | 3 | Supabase schema + auth | ✅ Done |
 | 4 | Local FastAPI backend | ✅ Done |
 | 5 | Cloud FastAPI backend | ✅ Done |
-| 6 | Bedside frontend | Pending |
+| 6 | Bedside frontend | ✅ Done |
 | 7 | Admin frontend | Pending |
 | 8 | ESP32 firmware | Pending |
 | 9 | ML anomaly detection | Pending |
