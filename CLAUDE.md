@@ -682,11 +682,11 @@ features = [
 - [x] Implement `GET /api/patients/:id/sessions`
 - [x] Implement `GET /api/alerts` — includes joined patient name, ic_number, ward
 - [x] Add CORS — configurable via `ALLOWED_ORIGINS` env var (comma-separated)
-- [ ] Deploy to Railway
+- [x] Deploy to Railway
 
 **Done when:** Patient history + live stream queryable from Railway with valid auth token.
 
-**Completed (code):** 2026-05-11 — `Procfile` included for Railway (`uvicorn main:app --host 0.0.0.0 --port $PORT`); set all env vars in Railway dashboard before deploying.
+**Completed:** 2026-05-11 — deployed to Railway at `https://medisync-cloud-api-production.up.railway.app`; all env vars set via `railway variables set`; `/health` returns `{"status":"ok"}`; unauthenticated requests return 401 as expected.
 
 ---
 

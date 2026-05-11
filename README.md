@@ -190,9 +190,9 @@ See `CLAUDE.md` for the full variable reference.
 
 ## Deployment
 
-| Service | Platform | Config |
+| Service | Platform | URL / Config |
 |---|---|---|
-| Cloud backend | Railway | Root: `/backend/cloud`, start: `uvicorn main:app --host 0.0.0.0 --port $PORT` |
+| Cloud backend | Railway | `https://medisync-cloud-api-production.up.railway.app` — root: `/backend/cloud`, start: `uvicorn main:app --host 0.0.0.0 --port $PORT` |
 | Admin frontend | Vercel | Root: `/frontend/admin`, framework: Next.js |
 | Local InfluxDB | Docker | `docker compose up -d` |
 
