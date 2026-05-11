@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
@@ -7,7 +9,7 @@ import {
   Activity, ArrowLeft, Droplets, HeartPulse, Thermometer,
   Wifi, WifiOff, Clock, AlertTriangle, LogOut,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { getToken, clearToken } from "@/lib/auth";
 import { fetchPatient, fetchSessions, fetchAlerts, fetchHistory } from "@/lib/api";
 import { StatusCard } from "@/components/StatusCard/StatusCard";
@@ -92,7 +94,7 @@ export default function PatientDetailPage() {
 
   const handleLogout = async () => {
     setLoggingOut(true);
-    await supabase.auth.signOut();
+    await getSupabase().auth.signOut();
     clearToken();
     router.replace("/");
   };
