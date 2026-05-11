@@ -53,7 +53,19 @@ MediSync/
 │   │   │   ├── readings.py # POST /api/readings
 │   │   │   └── stream.py   # GET /api/stream (SSE)
 │   │   └── requirements.txt
-│   └── cloud/              # FastAPI — Railway
+│   └── cloud/              # FastAPI — Railway (localhost:8001 for dev)
+│       ├── main.py         # App entry point, CORS
+│       ├── status.py       # Same rule-based get_status()
+│       ├── database.py     # InfluxDB Cloud read client + Supabase client
+│       ├── auth.py         # Supabase Auth JWT middleware (require_auth)
+│       ├── Procfile        # Railway start command
+│       ├── routers/
+│       │   ├── patients.py # GET /api/patients, GET /api/patients/:id
+│       │   ├── stream.py   # GET /api/patients/:id/stream (SSE)
+│       │   ├── history.py  # GET /api/patients/:id/history
+│       │   ├── sessions.py # GET /api/patients/:id/sessions
+│       │   └── alerts.py   # GET /api/alerts
+│       └── requirements.txt
 ├── frontend/
 │   ├── bedside/            # Next.js — localhost
 │   └── admin/              # Next.js — Vercel
@@ -138,6 +150,28 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+### Cloud Backend (local dev)
+
+```bash
+cd backend/cloud
+pip install -r requirements.txt
+uvicorn main:app --port 8001 --reload
+```
+
+Swagger UI at `http://localhost:8001/docs`.
+
+To get a JWT for testing:
+
+```bash
+curl -X POST 'https://<your-project>.supabase.co/auth/v1/token?grant_type=password' \
+  -H 'apikey: YOUR_ANON_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"email": "admin@email.com", "password": "yourpassword"}'
+```
+
+Use the returned `access_token` as `Authorization: Bearer <token>` on all cloud API requests.
+SSE endpoints accept the token as a `?token=` query parameter instead (browsers cannot set headers on `EventSource`).
+
 > **Note:** Local InfluxDB runs on port **8087** (not 8086). UI at `http://localhost:8087`, token: `medisync-local-token`.
 
 ### Environment Variables
@@ -156,9 +190,9 @@ See `CLAUDE.md` for the full variable reference.
 
 ## Deployment
 
-| Service | Platform | Config |
+| Service | Platform | URL / Config |
 |---|---|---|
-| Cloud backend | Railway | Root: `/backend/cloud`, start: `uvicorn main:app --host 0.0.0.0 --port $PORT` |
+| Cloud backend | Railway | `https://medisync-cloud-api-production.up.railway.app` — root: `/backend/cloud`, start: `uvicorn main:app --host 0.0.0.0 --port $PORT` |
 | Admin frontend | Vercel | Root: `/frontend/admin`, framework: Next.js |
 | Local InfluxDB | Docker | `docker compose up -d` |
 
@@ -172,7 +206,7 @@ See `CLAUDE.md` for the full variable reference.
 | 2 | InfluxDB Cloud setup | ✅ Done |
 | 3 | Supabase schema + auth | ✅ Done |
 | 4 | Local FastAPI backend | ✅ Done |
-| 5 | Cloud FastAPI backend | Pending |
+| 5 | Cloud FastAPI backend | ✅ Done |
 | 6 | Bedside frontend | Pending |
 | 7 | Admin frontend | Pending |
 | 8 | ESP32 firmware | Pending |
