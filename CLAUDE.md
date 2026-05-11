@@ -733,11 +733,11 @@ features = [
   - [x] History chart with date picker
   - [x] Session log
   - [x] Alert log
-- [ ] Deploy to Vercel
+- [x] Deploy to Vercel
 
 **Done when:** Admin logs in, sees patient list, clicks View, sees live StatusCard + chart.
 
-**Completed:** 2026-05-11 — Next.js 16 on `localhost:3002`; dark navy premium UI with Framer Motion, SVG arc gauges, Recharts; `proxy.ts` protects `/dashboard` and `/patient/*` via `sb-token` cookie; cloud SSE uses `?token=` query param; summary cards derived from patients + alerts + sessions; full search + status/ward filter in patient table; patient detail shows live SSE stream + history chart with date picker + session log + alert log. Fill in `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local` before running.
+**Completed:** 2026-05-11 — Next.js 16 on `localhost:3002`; dark navy premium UI with Framer Motion, SVG arc gauges, Recharts; `proxy.ts` protects `/dashboard` and `/patient/*` via `sb-token` cookie; cloud SSE uses `?token=` query param; summary cards derived from patients + alerts + sessions; full search + status/ward filter in patient table; patient detail shows live SSE stream + history chart with date picker + session log + alert log. Deployed to `https://medi-sync-eta.vercel.app`. `vercel.json` declares `"framework": "nextjs"` so Vercel uses `.next/` output instead of `public/`. `export const dynamic = "force-dynamic"` on `/dashboard` and `/patient/[id]` prevents static prerendering of auth-gated pages.
 
 ---
 
