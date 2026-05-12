@@ -742,8 +742,8 @@ features = [
 ---
 
 ### Phase 8 — ESP32 Firmware
-- [ ] Wire MAX30102 (I2C) and DS18B20 (OneWire) to ESP32
-- [ ] Install libraries: `ArduinoJson`, `SparkFun MAX3010x`, `DallasTemperature`
+- [ ] Wire MAX30102 (I2C) and MLX90614ESF (I2C) to ESP32
+- [ ] Install libraries: `ArduinoJson`, `SparkFun MAX3010x`, `Adafruit MLX90614`
 - [ ] Implement `sensors.h` — `readSpO2()`, `readBPM()`, `readTemperature()`
 - [ ] Implement main POST loop every 1s
 - [ ] Add `X-Device-Secret` header
