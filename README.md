@@ -39,7 +39,10 @@ An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine
 
 ```
 MediSync/
-├── firmware/               # ESP32 Arduino firmware
+├── firmware/
+│   ├── main/               # Main sketch — Serial JSON + LED status
+│   ├── i2c_scan/           # Utility sketch — verify sensor wiring
+│   └── serial_bridge.py    # Reads USB Serial, POSTs to local FastAPI
 ├── backend/
 │   ├── local/              # FastAPI — bedside machine (localhost:8000)
 │   │   ├── main.py         # App entry point, state, startup
@@ -159,6 +162,20 @@ npm run dev
 
 Open `http://localhost:3001` (port 3000 may be occupied on some machines).
 
+### ESP32 Serial Bridge
+
+After flashing `firmware/main/main.ino` to the ESP32:
+
+```bash
+cd firmware
+pip install pyserial requests
+python serial_bridge.py   # auto-detects ESP32 USB port
+```
+
+The bridge reads JSON lines from the ESP32 over USB Serial and forwards each reading to `localhost:8000/api/readings`. The local backend must be running first.
+
+To verify sensor wiring before flashing the main sketch, flash `firmware/i2c_scan/i2c_scan.ino` and open the Serial Monitor — it should report MAX30102 at `0x57` and MLX90614 at `0x5A`.
+
 ### Admin Frontend (local dev)
 
 ```bash
@@ -235,7 +252,7 @@ See `CLAUDE.md` for the full variable reference.
 | 5 | Cloud FastAPI backend | ✅ Done |
 | 6 | Bedside frontend | ✅ Done |
 | 7 | Admin frontend | ✅ Done |
-| 8 | ESP32 firmware | Pending |
+| 8 | ESP32 firmware | ✅ Done |
 | 9 | ML anomaly detection | Pending |
 | 10 | Polish & hardening | Pending |
 
