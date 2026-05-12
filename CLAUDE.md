@@ -30,13 +30,14 @@ A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and
 | Layer | Tech | Where |
 |---|---|---|
 | Firmware | ESP32, Arduino framework | Device |
+| Serial bridge | Python (`serial_bridge.py`) | Bedside machine |
 | Local backend | FastAPI | Bedside machine (localhost:8000) |
 | Cloud backend | FastAPI | Railway |
-| Time-series (local) | InfluxDB via Docker | Bedside machine (localhost:8086) |
+| Time-series (local) | InfluxDB via Docker | Bedside machine (localhost:8087) |
 | Time-series (cloud) | InfluxDB Cloud (Singapore region) | Cloud |
 | Relational DB | Supabase Postgres | Cloud |
 | Auth | Supabase Auth (admin) + shared nurse password (bedside) | Cloud |
-| Bedside frontend | Next.js | localhost:3000 |
+| Bedside frontend | Next.js | localhost:3001 |
 | Admin frontend | Next.js | Vercel |
 
 ---
@@ -45,7 +46,7 @@ A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and
 
 ### Index Page (`/`)
 Two buttons — **Patient** or **Admin**. This is the root of both apps but behaves differently:
-- Bedside app (`localhost:3000`) — shows Patient button only
+- Bedside app (`localhost:3001`) — shows Patient button only
 - Admin app (Vercel) — shows Admin button only
 
 ---
@@ -81,7 +82,7 @@ Patient Logout
 
 ### Middleware (Bedside)
 ```ts
-// middleware.ts
+// proxy.ts (Next.js 16 convention — replaces middleware.ts)
 if (pathname === '/dashboard' && !activePatient) {
   redirect('/')
 }
@@ -119,11 +120,16 @@ No way to reach `/dashboard` without an active patient. Direct URL access redire
 ## Monorepo Structure
 
 ```
-wearable-health/
+MediSync/
 ├── firmware/
-│   ├── main.ino
-│   ├── config.h                     # API URL, device ID, WiFi creds
-│   └── sensors.h                    # readSpO2(), readBPM(), readTemperature()
+│   ├── main/
+│   │   ├── main.ino                 # Main loop — Serial JSON output, LED status
+│   │   ├── config.h                 # Pins, baud rate, timing
+│   │   └── sensors.h                # sensorsBegin/Update, readSpO2/BPM/Temperature
+│   ├── i2c_scan/
+│   │   ├── i2c_scan.ino             # Utility — scan I2C bus, verify 0x57/0x5A
+│   │   └── config.h                 # SDA/SCL pins
+│   └── serial_bridge.py             # Reads JSON from USB Serial, POSTs to FastAPI
 │
 ├── backend/
 │   ├── local/                       # Runs on bedside machine
@@ -147,6 +153,7 @@ wearable-health/
 │       ├── database.py              # InfluxDB Cloud + Supabase clients
 │       ├── auth.py                  # Supabase Auth JWT middleware
 │       ├── status.py                # Same rule-based status logic
+│       ├── railway.json             # Railway deploy config
 │       ├── routers/
 │       │   ├── patients.py          # GET /api/patients, GET /api/patients/:id
 │       │   ├── stream.py            # GET /api/patients/:id/stream (SSE)
@@ -156,7 +163,7 @@ wearable-health/
 │       └── requirements.txt
 │
 ├── frontend/
-│   ├── bedside/                     # Next.js — localhost
+│   ├── bedside/                     # Next.js — localhost:3001
 │   │   ├── app/
 │   │   │   ├── page.tsx             # Index — New Patient / Existing Patient
 │   │   │   ├── register/page.tsx    # New patient registration form
@@ -164,7 +171,7 @@ wearable-health/
 │   │   │   └── dashboard/page.tsx   # StatusCard + GaugeCards + LiveChart
 │   │   ├── components/
 │   │   │   ├── StatusCard/
-│   │   │   │   ├── StatusCard.tsx   # Markup only — big colour-coded status display
+│   │   │   │   ├── StatusCard.tsx
 │   │   │   │   ├── StatusCard.hooks.ts
 │   │   │   │   └── StatusCard.types.ts
 │   │   │   ├── GaugeCard/
@@ -175,7 +182,7 @@ wearable-health/
 │   │   │       ├── LiveChart.tsx
 │   │   │       ├── LiveChart.hooks.ts
 │   │   │       └── LiveChart.types.ts
-│   │   ├── middleware.ts
+│   │   ├── proxy.ts                 # Redirect /dashboard → / if no active patient
 │   │   └── lib/
 │   │       └── api.ts
 │   │
@@ -192,7 +199,7 @@ wearable-health/
 │       │   ├── LiveChart/
 │       │   ├── HistoryChart/
 │       │   └── AlertBadge/
-│       ├── middleware.ts
+│       ├── proxy.ts                 # Redirect to / if no sb-token cookie
 │       └── lib/
 │           └── api.ts
 │
@@ -207,6 +214,7 @@ wearable-health/
 │       └── 20260511000000_initial_schema.sql   # patients, sessions, alerts
 │
 ├── docker-compose.yml
+├── start-bedside.sh                 # One-command bedside startup
 └── README.md
 ```
 
@@ -332,31 +340,31 @@ Danger state pulses to draw immediate attention.
 
 ### Local Backend (`backend/local/.env`)
 ```env
-LOCAL_INFLUX_URL=http://localhost:8086
-LOCAL_INFLUX_TOKEN=your-local-token
-LOCAL_INFLUX_ORG=your-org
+LOCAL_INFLUX_URL=http://localhost:8087
+LOCAL_INFLUX_TOKEN=medisync-local-token
+LOCAL_INFLUX_ORG=health-org
 LOCAL_INFLUX_BUCKET=health_local
 
-CLOUD_INFLUX_URL=https://ap-southeast-1-1.aws.cloud2.influxdata.com
+CLOUD_INFLUX_URL=https://us-east-1-1.aws.cloud2.influxdata.com
 CLOUD_INFLUX_TOKEN=your-cloud-token
-CLOUD_INFLUX_ORG=your-cloud-org
+CLOUD_INFLUX_ORG=Jacky
 CLOUD_INFLUX_BUCKET=health_cloud
 
-SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_URL=https://rzzxrlfgmkdoarglcpdw.supabase.co
 SUPABASE_SERVICE_KEY=your-service-key
 
 NURSE_PASSWORD=shared-nurse-password
-DEVICE_SECRET=shared-secret-for-esp32
+DEVICE_SECRET=esp32
 ```
 
 ### Cloud Backend (`backend/cloud/.env` / Railway)
 ```env
-CLOUD_INFLUX_URL=https://ap-southeast-1-1.aws.cloud2.influxdata.com
+CLOUD_INFLUX_URL=https://us-east-1-1.aws.cloud2.influxdata.com
 CLOUD_INFLUX_TOKEN=your-cloud-token
-CLOUD_INFLUX_ORG=your-cloud-org
+CLOUD_INFLUX_ORG=Jacky
 CLOUD_INFLUX_BUCKET=health_cloud
 
-SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_URL=https://rzzxrlfgmkdoarglcpdw.supabase.co
 SUPABASE_SERVICE_KEY=your-service-key
 ```
 
@@ -367,17 +375,19 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ### Admin Frontend (`frontend/admin/.env.local`)
 ```env
-NEXT_PUBLIC_API_URL=https://your-railway-app.railway.app
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_API_URL=https://medisync-cloud-api-production.up.railway.app
+NEXT_PUBLIC_SUPABASE_URL=https://rzzxrlfgmkdoarglcpdw.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-### Firmware (`firmware/config.h`)
-```cpp
-#define API_URL       "http://192.168.x.x:8000"
-#define DEVICE_ID     "esp32-001"
-#define DEVICE_SECRET "shared-secret-for-esp32"
+### Serial Bridge (`firmware/serial_bridge.py`)
+```python
+BAUD_RATE     = 115200
+API_URL       = "http://localhost:8000/api/readings"
+DEVICE_SECRET = "esp32"
+DEVICE_ID     = "esp32-001"
 ```
+No config file needed — edit constants at the top of the script.
 
 ---
 
@@ -511,9 +521,9 @@ CREATE TABLE alerts (
 version: '3'
 services:
   influxdb:
-    image: influxdb:2
+    image: influxdb:2.7.6
     ports:
-      - "8086:8086"
+      - "8087:8086"
     volumes:
       - influxdb_data:/var/lib/influxdb2
     environment:
@@ -523,13 +533,14 @@ services:
       - DOCKER_INFLUXDB_INIT_ORG=health-org
       - DOCKER_INFLUXDB_INIT_BUCKET=health_local
       - DOCKER_INFLUXDB_INIT_RETENTION=168h
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=medisync-local-token
 
 volumes:
   influxdb_data:
 ```
 
 Run: `docker compose up -d`
-UI: `http://localhost:8086`
+UI: `http://localhost:8087` (host port 8087 — 8086 occupied by another project)
 
 ---
 
@@ -692,7 +703,7 @@ features = [
 
 **Done when:** Patient history + live stream queryable from Railway with valid auth token.
 
-**Completed:** 2026-05-11 — deployed to Railway at `https://medisync-cloud-api-production.up.railway.app`; all env vars set via `railway variables set`; `/health` returns `{"status":"ok"}`; unauthenticated requests return 401 as expected.
+**Completed:** 2026-05-11 — deployed to Railway at `https://medisync-cloud-api-production.up.railway.app`; all env vars set in Railway dashboard; `/health` returns `{"status":"ok"}`; unauthenticated requests return 401 as expected.
 
 ---
 
@@ -741,41 +752,31 @@ features = [
 
 ---
 
-### Phase 8 — ESP32 Firmware
-- [ ] Wire MAX30102 (I2C) and MLX90614ESF (I2C) to ESP32
-- [ ] Install libraries: `ArduinoJson`, `SparkFun MAX3010x`, `Adafruit MLX90614`
-- [ ] Implement `sensors.h` — `readSpO2()`, `readBPM()`, `readTemperature()`
-- [ ] Implement main POST loop every 1s
-- [ ] Add `X-Device-Secret` header
-- [ ] LED — green = OK, red = error
-- [ ] Retry — 3 attempts per reading
-- [ ] Flash, verify in Serial Monitor
-- [ ] Confirm readings in local InfluxDB with correct `patient_id` tag and `status` field
+### Phase 8 — ESP32 Firmware ✅
+- [x] Wire MAX30102 (I2C) and MLX90614ESF (I2C) to ESP32
+- [x] Install libraries: `ArduinoJson`, `SparkFun MAX3010x`, `Adafruit MLX90614`
+- [x] Implement `sensors.h` — `sensorsBegin()`, `sensorsUpdate()`, `readSpO2()`, `readBPM()`, `readTemperature()`
+- [x] Implement main loop every 1s — serialises JSON and writes to USB Serial
+- [x] Add `X-Device-Secret` header (sent by serial bridge)
+- [x] LED — green = OK (valid reading), red = error (invalid reading or sensor init failure)
+- [x] Temperature retry — 3 attempts on transient I2C NaN before returning NaN
+- [x] `i2c_scan` utility sketch — scan bus, print MAX30102 (0x57) and MLX90614 (0x5A)
+- [x] `serial_bridge.py` — auto-detects ESP32 USB port, forwards JSON lines to local FastAPI
+- [x] Flash, verify in Serial Monitor
+- [x] Confirm readings in local InfluxDB with correct `patient_id` tag and `status` field
 
-**Core loop:**
-```cpp
-void loop() {
-  StaticJsonDocument<200> doc;
-  doc["spo2"]        = readSpO2();
-  doc["bpm"]         = readBPM();
-  doc["temperature"] = readTemperature();
-  doc["timestamp"]   = millis() / 1000;
+**Architecture note:** ESP32 sends readings over USB Serial as newline-delimited JSON. `serial_bridge.py` runs on the bedside machine, auto-detects the ESP32 port (CP2102/CH340/CH9102/FTDI), and POSTs each reading to `localhost:8000/api/readings`. This avoids WiFi credential management and is more reliable for a fixed bedside setup.
 
-  String body;
-  serializeJson(doc, body);
-
-  HTTPClient http;
-  http.begin(String(API_URL) + "/api/readings");
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-Device-Secret", DEVICE_SECRET);
-  http.POST(body);
-  http.end();
-
-  delay(1000);
-}
+**Serial bridge usage:**
+```bash
+cd firmware
+pip install pyserial requests
+python serial_bridge.py   # auto-detects ESP32 USB port
 ```
 
 **Done when:** Bedside StatusCard and chart update every second with real sensor values.
+
+**Completed:** 2026-05-12 — USB Serial bridge approach instead of WiFi/HTTP on ESP32; 100-sample sliding window for SpO₂/BPM via SparkFun MAX3010x algorithm; MLX90614 object-temperature reads with 3-retry on NaN; LED status indicators on GPIO 25/26; `i2c_scan` sketch for hardware verification; `serial_bridge.py` with auto-port detection for CP2102/CH340/CH9102/FTDI USB chips.
 
 ---
 
@@ -811,9 +812,16 @@ Note: `StatusCard` (rule-based) is already live from Phase 4. ML `AlertBadge` is
 
 ### Bedside Machine
 ```bash
+# One-command start (recommended)
+./start-bedside.sh
+
+# Manual
 docker compose up -d
 cd backend/local && uvicorn main:app --host 0.0.0.0 --port 8000
 cd frontend/bedside && npm run dev
+
+# Start serial bridge (after flashing ESP32)
+cd firmware && python serial_bridge.py
 ```
 
 ### Railway (Cloud Backend)
@@ -823,7 +831,7 @@ cd frontend/bedside && npm run dev
 
 ### Vercel (Admin Frontend)
 - Root directory: `/frontend/admin`
-- Framework: Next.js
+- Framework: Next.js (declared in `vercel.json`)
 - Set `NEXT_PUBLIC_API_URL` and Supabase keys
 
 ---
@@ -839,6 +847,8 @@ cd frontend/bedside && npm run dev
 - SSE endpoints must set `Content-Type: text/event-stream` and disable response buffering
 - Never use `time.sleep()` in async FastAPI — always `asyncio.sleep()`
 - Both Next.js apps are fully independent — separate `package.json`, separate deploys
-- ESP32 connects via local WiFi (same network as bedside machine), not USB serial for HTTP
+- ESP32 sends data over USB Serial to `serial_bridge.py`, not directly via WiFi/HTTP
+- Local InfluxDB runs on host port **8087** (container port 8086) — UI at `http://localhost:8087`
 - InfluxDB Cloud free tier: 5MB/5min write limit, 30-day retention — sufficient for prototype
 - Nurse password is a single shared secret in `.env` — not per-nurse, not stored in DB
+- Cloud backend on Railway needs `CLOUD_INFLUX_ORG` and `CLOUD_INFLUX_BUCKET` set explicitly — they do not default
