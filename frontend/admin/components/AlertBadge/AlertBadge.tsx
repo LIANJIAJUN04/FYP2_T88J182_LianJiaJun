@@ -7,7 +7,7 @@ export function AlertBadge({ count, hasUnresolved }: AlertBadgeProps) {
     return (
       <span
         className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-        style={{ background: "#0c1524", color: "#334155", border: "1px solid #1e3a5f" }}
+        style={{ background: "rgba(255,255,255,0.03)", color: "#45464d", border: "1px solid rgba(255,255,255,0.07)" }}
       >
         None
       </span>
@@ -19,8 +19,8 @@ export function AlertBadge({ count, hasUnresolved }: AlertBadgeProps) {
       className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold"
       style={
         hasUnresolved
-          ? { background: "#ef444418", color: "#f87171", border: "1px solid #ef444430" }
-          : { background: "#f59e0b18", color: "#fbbf24", border: "1px solid #f59e0b30" }
+          ? { background: "rgba(255,180,171,0.08)", color: "#ffb4ab", border: "1px solid rgba(255,180,171,0.2)" }
+          : { background: "rgba(245,158,11,0.08)", color: "#fbbf24", border: "1px solid rgba(245,158,11,0.2)" }
       }
     >
       {count} {count === 1 ? "alert" : "alerts"}

@@ -42,9 +42,9 @@ export default function DashboardPage() {
 
   if (!patient) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#060d1a" }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#131315" }}>
         <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ duration: 1.5, repeat: Infinity }}>
-          <Activity className="w-8 h-8" style={{ color: "#0ea5e9" }} />
+          <Activity className="w-8 h-8" style={{ color: "#4cd7f6" }} />
         </motion.div>
       </div>
     );
@@ -53,11 +53,11 @@ export default function DashboardPage() {
   const isConnected = status !== "connecting";
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#060d1a" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: "#131315" }}>
       {/* Ambient */}
       <div
         className="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse at center, #0ea5e910 0%, transparent 70%)" }}
+        style={{ background: "radial-gradient(ellipse at center, rgba(76,215,246,0.06) 0%, transparent 70%)" }}
       />
 
       {/* Navbar */}
@@ -66,31 +66,37 @@ export default function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
         className="flex items-center justify-between px-6 py-4 flex-shrink-0"
-        style={{ borderBottom: "1px solid #0f1e38" }}
+        style={{
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(19,19,21,0.9)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          boxShadow: "0 4px 24px rgba(76,215,246,0.06)",
+        }}
       >
         <div className="flex items-center gap-3">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg, #0ea5e9, #06b6d4)" }}
+            style={{ background: "linear-gradient(135deg, #4cd7f6, #03b5d3)" }}
           >
             <Activity className="w-4 h-4 text-white" />
           </div>
-          <span className="font-black text-base" style={{ color: "#f0f6ff" }}>
-            Medi<span style={{ color: "#0ea5e9" }}>Sync</span>
+          <span className="font-black text-base" style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
+            Medi<span style={{ color: "#4cd7f6" }}>Sync</span>
           </span>
         </div>
 
         <div className="flex items-center gap-4">
           {/* Connection indicator */}
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: isConnected ? "#22c55e" : "#64748b" }}>
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: isConnected ? "#22c55e" : "#909097" }}>
             {isConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             <span className="hidden sm:inline">{isConnected ? "Live" : "Connecting…"}</span>
           </div>
 
           {/* Patient info */}
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold" style={{ color: "#f0f6ff" }}>{patient.name}</p>
-            <p className="text-xs" style={{ color: "#475569" }}>Active session</p>
+            <p className="text-sm font-semibold" style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>{patient.name}</p>
+            <p className="text-xs" style={{ color: "#909097" }}>Active session</p>
           </div>
 
           {/* Logout */}
@@ -98,7 +104,7 @@ export default function DashboardPage() {
             onClick={handleLogout}
             disabled={loggingOut}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
-            style={{ background: "#1a0a0a", border: "1px solid #3f1515", color: "#f87171", cursor: loggingOut ? "not-allowed" : "pointer" }}
+            style={{ background: "rgba(255,180,171,0.05)", border: "1px solid rgba(147,0,10,0.3)", color: "#ffb4ab", cursor: loggingOut ? "not-allowed" : "pointer" }}
           >
             <LogOut className="w-3 h-3" />
             {loggingOut ? "Logging out…" : "Logout"}
@@ -114,11 +120,11 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
         >
-          <h2 className="text-lg font-bold" style={{ color: "#94a3b8" }}>
-            Monitoring: <span style={{ color: "#f0f6ff" }}>{patient.name}</span>
+          <h2 className="text-lg font-bold" style={{ color: "#c6c6cd", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>
+            Monitoring: <span style={{ color: "#e4e2e4" }}>{patient.name}</span>
           </h2>
           {latest && (
-            <p className="text-xs mt-0.5" style={{ color: "#334155" }}>
+            <p className="text-xs mt-0.5" style={{ color: "#45464d" }}>
               Last reading: {formatTime(latest.ts)}
             </p>
           )}
