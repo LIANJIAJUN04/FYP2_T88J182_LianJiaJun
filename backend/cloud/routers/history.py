@@ -29,5 +29,8 @@ async def get_patient_history(
 ):
     start = _to_rfc3339(from_date)
     stop = _to_rfc3339(to_date, end_of_day=True)
-    readings = await asyncio.to_thread(get_history, patient_id, start, stop)
-    return readings
+    try:
+        readings = await asyncio.to_thread(get_history, patient_id, start, stop)
+        return readings
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"InfluxDB query failed: {e}")
