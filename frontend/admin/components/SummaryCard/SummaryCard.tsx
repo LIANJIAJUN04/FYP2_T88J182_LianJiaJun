@@ -11,13 +11,14 @@ export function SummaryCard({ label, value, icon, color, description, loading }:
       transition={{ duration: 0.4, ease: "easeOut" }}
       className="rounded-2xl p-5 flex flex-col gap-4"
       style={{
-        background: "linear-gradient(145deg, #0c1524, #0f1e38)",
-        border: "1.5px solid #1e3a5f",
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(20px)",
         boxShadow: `0 4px 24px rgba(0,0,0,0.3), 0 0 20px ${color}10`,
       }}
     >
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#64748b" }}>
+        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#909097" }}>
           {label}
         </p>
         <div
@@ -37,14 +38,14 @@ export function SummaryCard({ label, value, icon, color, description, loading }:
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.3 }}
           className="text-4xl font-black tabular-nums leading-none"
-          style={{ color }}
+          style={{ color, fontFamily: "'Space Grotesk', monospace" }}
         >
           {value}
         </motion.p>
       )}
 
       {description && (
-        <p className="text-xs" style={{ color: "#334155" }}>
+        <p className="text-xs" style={{ color: "#45464d" }}>
           {description}
         </p>
       )}
