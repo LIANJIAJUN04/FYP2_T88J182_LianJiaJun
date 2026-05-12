@@ -5,7 +5,7 @@ export function getValueColor(
   normalRange: [number, number],
   warningRange: [number, number]
 ): string {
-  if (value === null) return "#64748b";
+  if (value === null) return "#909097";
   if (value >= normalRange[0] && value <= normalRange[1]) return "#22c55e";
   if (value >= warningRange[0] && value <= warningRange[1]) return "#f59e0b";
   return "#ef4444";

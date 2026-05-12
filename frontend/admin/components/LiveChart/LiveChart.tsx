@@ -17,8 +17,8 @@ const METRICS: {
   color: string;
   domain: [number | "auto", number | "auto"];
 }[] = [
-  { key: "spo2",        label: "SpO₂",       unit: "%",   color: "#06b6d4", domain: [85, 100] },
-  { key: "bpm",         label: "Heart Rate",  unit: "bpm", color: "#818cf8", domain: ["auto", "auto"] },
+  { key: "spo2",        label: "SpO₂",       unit: "%",   color: "#4cd7f6", domain: [85, 100] },
+  { key: "bpm",         label: "Heart Rate",  unit: "bpm", color: "#bec6e0", domain: ["auto", "auto"] },
   { key: "temperature", label: "Temperature", unit: "°C",  color: "#f97316", domain: [34, 40] },
 ];
 
@@ -26,8 +26,8 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   if (!active || !payload?.length) return null;
   const p = payload[0];
   return (
-    <div className="rounded-xl px-3 py-2 text-xs" style={{ background: "#0c1524", border: "1px solid #1e3a5f" }}>
-      <p style={{ color: "#64748b" }}>{label}</p>
+    <div className="rounded-xl px-3 py-2 text-xs" style={{ background: "#1b1b1d", border: "1px solid rgba(255,255,255,0.08)" }}>
+      <p style={{ color: "#909097" }}>{label}</p>
       <p style={{ color: p.color, fontWeight: 700 }}>{p.value} {p.name}</p>
     </div>
   );
@@ -41,12 +41,12 @@ export function LiveChart({ readings }: LiveChartProps) {
   return (
     <div
       className="rounded-2xl p-6"
-      style={{ background: "linear-gradient(145deg, #0c1524, #0f1e38)", border: "1.5px solid #1e3a5f" }}
+      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}
     >
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full blink-dot" style={{ background: "#22c55e" }} />
-          <h3 className="text-sm font-semibold" style={{ color: "#94a3b8" }}>Live Vitals</h3>
+          <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>Live Vitals</h3>
           <span
             className="text-xs px-2 py-0.5 rounded-full"
             style={{ background: "#22c55e18", color: "#22c55e" }}
@@ -63,7 +63,7 @@ export function LiveChart({ readings }: LiveChartProps) {
               style={
                 tab === m.key
                   ? { background: `${m.color}22`, color: m.color, border: `1px solid ${m.color}44` }
-                  : { background: "transparent", color: "#475569", border: "1px solid transparent" }
+                  : { background: "transparent", color: "#909097", border: "1px solid transparent" }
               }
             >
               {m.label}
@@ -81,22 +81,22 @@ export function LiveChart({ readings }: LiveChartProps) {
       >
         {readings.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <p className="text-sm" style={{ color: "#334155" }}>Waiting for readings…</p>
+            <p className="text-sm" style={{ color: "#45464d" }}>Waiting for readings…</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" strokeOpacity={0.5} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(69,70,77,0.4)" strokeOpacity={0.5} />
               <XAxis
                 dataKey="time"
-                tick={{ fontSize: 10, fill: "#475569" }}
+                tick={{ fontSize: 10, fill: "#909097" }}
                 tickLine={false}
                 axisLine={false}
                 interval="preserveStartEnd"
               />
               <YAxis
                 domain={metric.domain}
-                tick={{ fontSize: 10, fill: "#475569" }}
+                tick={{ fontSize: 10, fill: "#909097" }}
                 tickLine={false}
                 axisLine={false}
               />

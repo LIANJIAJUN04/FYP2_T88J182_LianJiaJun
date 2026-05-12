@@ -40,23 +40,23 @@ export default function LoginPage() {
   return (
     <div
       className="min-h-screen flex items-center justify-center relative overflow-hidden"
-      style={{ background: "#060d1a" }}
+      style={{ background: "#131315" }}
     >
       {/* Ambient glows */}
       <div
         className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse at center top, #0ea5e912 0%, transparent 65%)" }}
+        style={{ background: "radial-gradient(ellipse at center top, rgba(76,215,246,0.07) 0%, transparent 65%)" }}
       />
       <div
         className="absolute bottom-0 right-0 w-[600px] h-[400px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse at bottom right, #06b6d408 0%, transparent 60%)" }}
+        style={{ background: "radial-gradient(ellipse at bottom right, rgba(3,181,211,0.04) 0%, transparent 60%)" }}
       />
 
       {/* Grid pattern */}
       <div
         className="absolute inset-0 pointer-events-none opacity-[0.03]"
         style={{
-          backgroundImage: `linear-gradient(#0ea5e9 1px, transparent 1px), linear-gradient(90deg, #0ea5e9 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(#4cd7f6 1px, transparent 1px), linear-gradient(90deg, #4cd7f6 1px, transparent 1px)`,
           backgroundSize: "40px 40px",
         }}
       />
@@ -68,17 +68,17 @@ export default function LoginPage() {
         transition={{ duration: 0.5, ease: "easeOut" }}
         className="relative w-full max-w-md mx-4"
         style={{
-          background: "linear-gradient(145deg, rgba(12,21,36,0.95), rgba(15,30,56,0.95))",
-          border: "1px solid #1e3a5f",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.08)",
           borderRadius: "24px",
-          boxShadow: "0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(14,165,233,0.08)",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(76,215,246,0.07)",
           backdropFilter: "blur(20px)",
         }}
       >
         {/* Top accent line */}
         <div
           className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-3/4"
-          style={{ background: "linear-gradient(90deg, transparent, #0ea5e960, transparent)" }}
+          style={{ background: "linear-gradient(90deg, transparent, #4cd7f660, transparent)" }}
         />
 
         <div className="p-8 sm:p-10">
@@ -87,38 +87,41 @@ export default function LoginPage() {
             <div
               className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
               style={{
-                background: "linear-gradient(135deg, #0ea5e9, #06b6d4)",
-                boxShadow: "0 8px 32px rgba(14,165,233,0.35)",
+                background: "linear-gradient(135deg, #4cd7f6, #03b5d3)",
+                boxShadow: "0 8px 32px rgba(76,215,246,0.3)",
               }}
             >
               <Activity className="w-7 h-7 text-white" />
             </div>
-            <h1 className="text-2xl font-black tracking-tight" style={{ color: "#f0f6ff" }}>
-              Medi<span style={{ color: "#0ea5e9" }}>Sync</span>
+            <h1
+              className="text-2xl font-black tracking-tight"
+              style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 800 }}
+            >
+              Medi<span style={{ color: "#4cd7f6" }}>Sync</span>
             </h1>
             <div
               className="flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full text-xs font-semibold"
-              style={{ background: "#0ea5e912", border: "1px solid #0ea5e930", color: "#38bdf8" }}
+              style={{ background: "rgba(76,215,246,0.07)", border: "1px solid rgba(76,215,246,0.18)", color: "#4cd7f6" }}
             >
               <Shield className="w-3 h-3" />
               Admin Portal
             </div>
           </div>
 
-          <p className="text-center text-sm mb-8" style={{ color: "#475569" }}>
+          <p className="text-center text-sm mb-8" style={{ color: "#909097" }}>
             Sign in with your administrator credentials to access the monitoring dashboard.
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748b" }}>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#909097" }}>
                 Email Address
               </label>
               <div className="relative">
                 <Mail
                   className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-                  style={{ color: "#334155" }}
+                  style={{ color: "#45464d" }}
                 />
                 <input
                   type="email"
@@ -128,25 +131,25 @@ export default function LoginPage() {
                   required
                   className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: "#0a1628",
-                    border: "1px solid #1e3a5f",
-                    color: "#f0f6ff",
+                    background: "#0e0e10",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    color: "#e4e2e4",
                   }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = "#0ea5e9")}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = "#1e3a5f")}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "#4cd7f6")}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")}
                 />
               </div>
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#64748b" }}>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: "#909097" }}>
                 Password
               </label>
               <div className="relative">
                 <Lock
                   className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-                  style={{ color: "#334155" }}
+                  style={{ color: "#45464d" }}
                 />
                 <input
                   type={showPass ? "text" : "password"}
@@ -156,18 +159,18 @@ export default function LoginPage() {
                   required
                   className="w-full pl-10 pr-10 py-3 rounded-xl text-sm outline-none transition-all"
                   style={{
-                    background: "#0a1628",
-                    border: "1px solid #1e3a5f",
-                    color: "#f0f6ff",
+                    background: "#0e0e10",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    color: "#e4e2e4",
                   }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = "#0ea5e9")}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = "#1e3a5f")}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "#4cd7f6")}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPass((p) => !p)}
                   className="absolute right-3 top-1/2 -translate-y-1/2"
-                  style={{ color: "#475569" }}
+                  style={{ color: "#909097" }}
                 >
                   {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -180,7 +183,7 @@ export default function LoginPage() {
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
-                style={{ background: "#3f00001a", border: "1px solid #dc262633", color: "#f87171" }}
+                style={{ background: "rgba(255,180,171,0.06)", border: "1px solid rgba(255,180,171,0.2)", color: "#ffb4ab" }}
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 {error}
@@ -196,10 +199,10 @@ export default function LoginPage() {
               className="w-full py-3 rounded-xl font-bold text-sm transition-all"
               style={{
                 background: loading
-                  ? "#1e3a5f"
-                  : "linear-gradient(135deg, #0ea5e9, #06b6d4)",
-                color: loading ? "#64748b" : "#fff",
-                boxShadow: loading ? "none" : "0 4px 24px rgba(14,165,233,0.35)",
+                  ? "rgba(255,255,255,0.06)"
+                  : "linear-gradient(135deg, #4cd7f6, #03b5d3)",
+                color: loading ? "#45464d" : "#001f26",
+                boxShadow: loading ? "none" : "0 4px 20px rgba(76,215,246,0.3)",
                 cursor: loading ? "not-allowed" : "pointer",
               }}
             >
@@ -209,7 +212,7 @@ export default function LoginPage() {
                     animate={{ rotate: 360 }}
                     transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                     className="w-4 h-4 border-2 border-t-transparent rounded-full inline-block"
-                    style={{ borderColor: "#475569", borderTopColor: "transparent" }}
+                    style={{ borderColor: "#45464d", borderTopColor: "transparent" }}
                   />
                   Signing in…
                 </span>
@@ -219,7 +222,7 @@ export default function LoginPage() {
             </motion.button>
           </form>
 
-          <p className="text-center text-xs mt-6" style={{ color: "#334155" }}>
+          <p className="text-center text-xs mt-6" style={{ color: "#45464d" }}>
             Secured by Supabase Auth · MediSync v1.0
           </p>
         </div>
