@@ -23,11 +23,14 @@ def _write_to_cloud(point: Point) -> None:
 
 
 async def cloud_sync_worker() -> None:
+    print("[sync] Cloud sync worker started")
     while True:
         point: Point = await sync_queue.get()
         try:
             await asyncio.to_thread(_write_to_cloud, point)
-        except Exception:
+            print("[sync] Cloud write ok")
+        except Exception as e:
+            print(f"[sync] Cloud write failed: {e} — retrying in 5s")
             await sync_queue.put(point)
             await asyncio.sleep(5)
 
