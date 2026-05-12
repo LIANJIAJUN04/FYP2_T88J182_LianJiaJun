@@ -6,10 +6,10 @@ import { UserPlus, LogIn, Activity } from "lucide-react";
 
 export default function IndexPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: "#060d1a" }}>
+    <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: "#131315" }}>
       <div
         className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse at center, #0ea5e915 0%, transparent 70%)" }}
+        style={{ background: "radial-gradient(ellipse at center, rgba(76,215,246,0.09) 0%, transparent 70%)" }}
       />
 
       <motion.div
@@ -21,14 +21,14 @@ export default function IndexPage() {
         <div className="flex flex-col items-center mb-12">
           <div
             className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-            style={{ background: "linear-gradient(135deg, #0ea5e9, #06b6d4)", boxShadow: "0 0 40px rgba(14,165,233,0.4)" }}
+            style={{ background: "linear-gradient(135deg, #4cd7f6, #03b5d3)", boxShadow: "0 0 32px rgba(76,215,246,0.3)" }}
           >
             <Activity className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-3xl font-black tracking-tight" style={{ color: "#f0f6ff" }}>
-            Medi<span style={{ color: "#0ea5e9" }}>Sync</span>
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 800 }}>
+            Medi<span style={{ color: "#4cd7f6" }}>Sync</span>
           </h1>
-          <p className="text-sm mt-1" style={{ color: "#475569" }}>Bedside Monitoring Station</p>
+          <p className="text-sm mt-1" style={{ color: "#909097" }}>Bedside Monitoring Station</p>
         </div>
 
         <div className="space-y-4">
@@ -39,22 +39,24 @@ export default function IndexPage() {
               transition={{ duration: 0.15 }}
               className="flex items-center gap-4 p-6 rounded-2xl cursor-pointer group"
               style={{
-                background: "linear-gradient(135deg, #0c1e38 0%, #0f2a4a 100%)",
-                border: "1.5px solid #1e4a7a",
+                background: "rgba(76,215,246,0.04)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1.5px solid rgba(76,215,246,0.18)",
                 boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
               }}
             >
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, #0ea5e9, #0284c7)", boxShadow: "0 0 20px rgba(14,165,233,0.3)" }}
+                style={{ background: "linear-gradient(135deg, #4cd7f6, #03b5d3)", boxShadow: "0 4px 20px rgba(76,215,246,0.3)" }}
               >
                 <UserPlus className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-base font-bold" style={{ color: "#f0f6ff" }}>New Patient</h2>
-                <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>Register and start monitoring</p>
+                <h2 className="text-base font-bold" style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>New Patient</h2>
+                <p className="text-xs mt-0.5" style={{ color: "#909097" }}>Register and start monitoring</p>
               </div>
-              <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-lg" style={{ color: "#0ea5e9" }}>→</span>
+              <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-lg" style={{ color: "#4cd7f6" }}>→</span>
             </motion.div>
           </Link>
 
@@ -65,27 +67,29 @@ export default function IndexPage() {
               transition={{ duration: 0.15 }}
               className="flex items-center gap-4 p-6 rounded-2xl cursor-pointer group"
               style={{
-                background: "linear-gradient(135deg, #0c1524 0%, #0f1e38 100%)",
-                border: "1.5px solid #1e3a5f",
+                background: "rgba(255,255,255,0.04)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1.5px solid rgba(255,255,255,0.08)",
                 boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
               }}
             >
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, #1e293b, #0f172a)", border: "1px solid #334155" }}
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
               >
-                <LogIn className="w-6 h-6" style={{ color: "#94a3b8" }} />
+                <LogIn className="w-6 h-6" style={{ color: "#c6c6cd" }} />
               </div>
               <div>
-                <h2 className="text-base font-bold" style={{ color: "#f0f6ff" }}>Existing Patient</h2>
-                <p className="text-xs mt-0.5" style={{ color: "#64748b" }}>Login with IC number</p>
+                <h2 className="text-base font-bold" style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>Existing Patient</h2>
+                <p className="text-xs mt-0.5" style={{ color: "#909097" }}>Login with IC number</p>
               </div>
-              <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-lg" style={{ color: "#64748b" }}>→</span>
+              <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-lg" style={{ color: "#909097" }}>→</span>
             </motion.div>
           </Link>
         </div>
 
-        <p className="text-center text-xs mt-10" style={{ color: "#1e3a5f" }}>
+        <p className="text-center text-xs mt-10" style={{ color: "#45464d" }}>
           MediSync v1.0 — Bedside Station
         </p>
       </motion.div>

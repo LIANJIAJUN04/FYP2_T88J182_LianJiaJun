@@ -97,11 +97,11 @@ export default function DashboardPage() {
   ).size;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#060d1a" }}>
+    <div className="min-h-screen flex flex-col" style={{ background: "#131315" }}>
       {/* Ambient */}
       <div
         className="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse at center top, #0ea5e90a 0%, transparent 65%)" }}
+        style={{ background: "radial-gradient(ellipse at center top, rgba(76,215,246,0.04) 0%, transparent 65%)" }}
       />
 
       {/* Navbar */}
@@ -111,25 +111,29 @@ export default function DashboardPage() {
         transition={{ duration: 0.4 }}
         className="sticky top-0 z-50 flex items-center justify-between px-6 py-4"
         style={{
-          borderBottom: "1px solid #0f1e38",
-          background: "rgba(6,13,26,0.85)",
-          backdropFilter: "blur(16px)",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(19,19,21,0.9)",
+          backdropFilter: "blur(20px)",
+          boxShadow: "0 4px 24px rgba(76,215,246,0.06)",
         }}
       >
         {/* Logo */}
         <div className="flex items-center gap-3">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg, #0ea5e9, #06b6d4)" }}
+            style={{ background: "linear-gradient(135deg, #4cd7f6, #03b5d3)" }}
           >
             <Activity className="w-4 h-4 text-white" />
           </div>
-          <span className="font-black text-base" style={{ color: "#f0f6ff" }}>
-            Medi<span style={{ color: "#0ea5e9" }}>Sync</span>
+          <span
+            className="font-black text-base"
+            style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 800 }}
+          >
+            Medi<span style={{ color: "#4cd7f6" }}>Sync</span>
           </span>
           <span
             className="hidden sm:inline text-xs px-2 py-0.5 rounded-full font-semibold"
-            style={{ background: "#0ea5e912", border: "1px solid #0ea5e930", color: "#38bdf8" }}
+            style={{ background: "rgba(76,215,246,0.08)", border: "1px solid rgba(76,215,246,0.18)", color: "#4cd7f6" }}
           >
             Admin
           </span>
@@ -142,9 +146,9 @@ export default function DashboardPage() {
             disabled={refreshing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
             style={{
-              background: "#0f1e38",
-              border: "1px solid #1e3a5f",
-              color: "#60a5fa",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "#bec6e0",
               cursor: refreshing ? "not-allowed" : "pointer",
             }}
           >
@@ -154,8 +158,8 @@ export default function DashboardPage() {
 
           {adminEmail && (
             <div className="hidden sm:block text-right">
-              <p className="text-xs font-semibold" style={{ color: "#94a3b8" }}>{adminEmail}</p>
-              <p className="text-xs" style={{ color: "#334155" }}>Administrator</p>
+              <p className="text-xs font-semibold" style={{ color: "#c6c6cd" }}>{adminEmail}</p>
+              <p className="text-xs" style={{ color: "#45464d" }}>Administrator</p>
             </div>
           )}
 
@@ -164,9 +168,9 @@ export default function DashboardPage() {
             disabled={loggingOut}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
             style={{
-              background: "#1a0a0a",
-              border: "1px solid #3f1515",
-              color: "#f87171",
+              background: "rgba(255,180,171,0.05)",
+              border: "1px solid rgba(147,0,10,0.3)",
+              color: "#ffb4ab",
               cursor: loggingOut ? "not-allowed" : "pointer",
             }}
           >
@@ -184,8 +188,13 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.05 }}
         >
-          <h1 className="text-xl font-black" style={{ color: "#f0f6ff" }}>Patient Overview</h1>
-          <p className="text-xs mt-0.5" style={{ color: "#334155" }}>
+          <h1
+            className="text-xl font-black"
+            style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 800 }}
+          >
+            Patient Overview
+          </h1>
+          <p className="text-xs mt-0.5" style={{ color: "#45464d" }}>
             Real-time monitoring — {new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </motion.div>
@@ -201,7 +210,7 @@ export default function DashboardPage() {
             label="Total Patients"
             value={patients.length}
             icon={<Users className="w-4 h-4" />}
-            color="#0ea5e9"
+            color="#4cd7f6"
             description="Registered in system"
             loading={loading}
           />

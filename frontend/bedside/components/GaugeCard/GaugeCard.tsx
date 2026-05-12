@@ -27,14 +27,16 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
       transition={{ duration: 0.4, ease: "easeOut" }}
       className="rounded-2xl p-5 flex flex-col items-center gap-2"
       style={{
-        background: "linear-gradient(145deg, #0c1524, #0f1e38)",
-        border: "1.5px solid #1e3a5f",
+        background: "rgba(255,255,255,0.04)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.08)",
         boxShadow: `0 4px 24px rgba(0,0,0,0.4), 0 0 20px ${color}18`,
       }}
     >
       <div className="flex items-center gap-2 w-full">
-        <span style={{ color: "#60a5fa" }}>{icon}</span>
-        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#94a3b8" }}>
+        <span style={{ color: "#bec6e0" }}>{icon}</span>
+        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#c6c6cd" }}>
           {label}
         </span>
       </div>
@@ -45,7 +47,7 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
           <path
             d={trackPath}
             fill="none"
-            stroke="#1e3a5f"
+            stroke="#353436"
             strokeWidth="8"
             strokeLinecap="round"
           />
@@ -83,11 +85,11 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.3 }}
             className="text-3xl font-black tabular-nums leading-none"
-            style={{ color }}
+            style={{ color, fontFamily: "'Space Grotesk', monospace" }}
           >
             {value !== null ? (metric === "temperature" ? value.toFixed(1) : Math.round(value)) : "--"}
           </motion.span>
-          <span className="text-xs font-medium mt-0.5" style={{ color: "#64748b" }}>{unit}</span>
+          <span className="text-xs font-medium mt-0.5" style={{ color: "#909097" }}>{unit}</span>
         </div>
       </div>
     </motion.div>
