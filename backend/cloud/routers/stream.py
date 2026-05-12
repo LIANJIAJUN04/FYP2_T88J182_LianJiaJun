@@ -21,10 +21,14 @@ async def stream(
             if await request.is_disconnected():
                 break
 
-            reading = await asyncio.to_thread(get_latest_reading, patient_id)
-            if reading:
-                yield f"data: {json.dumps(reading)}\n\n"
-            else:
+            try:
+                reading = await asyncio.to_thread(get_latest_reading, patient_id)
+                if reading:
+                    yield f"data: {json.dumps(reading)}\n\n"
+                else:
+                    yield ": keep-alive\n\n"
+            except Exception as e:
+                print(f"[stream] InfluxDB query error: {e}")
                 yield ": keep-alive\n\n"
 
             await asyncio.sleep(2)
