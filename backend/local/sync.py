@@ -37,7 +37,7 @@ async def cloud_sync_worker() -> None:
 
 def enqueue_reading(
     patient_id: str,
-    spo2: float,
+    spo2: float | None,
     bpm: int,
     temperature: float,
     status: str,
@@ -48,7 +48,6 @@ def enqueue_reading(
     point = (
         Point("health_readings")
         .tag("patient_id", patient_id)
-        .field("spo2", float(spo2))
         .field("bpm", int(bpm))
         .field("temperature", float(temperature))
         .field("status", status)
@@ -56,4 +55,6 @@ def enqueue_reading(
         .field("alert", alert)
         .time(ts, WritePrecision.NS)
     )
+    if spo2 is not None:
+        point = point.field("spo2", float(spo2))
     sync_queue.put_nowait(point)

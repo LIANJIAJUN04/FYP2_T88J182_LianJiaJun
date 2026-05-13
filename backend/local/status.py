@@ -1,9 +1,8 @@
-def get_status(spo2: float, bpm: int, temperature: float) -> str:
-    # temperature == 0.0 is the firmware sentinel for "sensor unavailable" — skip temp checks
+def get_status(spo2: float | None, bpm: int, temperature: float) -> str:
     temp_available = temperature != 0.0
 
     if (
-        spo2 < 90
+        (spo2 is not None and spo2 < 90)
         or bpm < 40
         or bpm > 130
         or (temp_available and temperature > 38)
@@ -11,7 +10,7 @@ def get_status(spo2: float, bpm: int, temperature: float) -> str:
     ):
         return "danger"
     elif (
-        spo2 < 95
+        (spo2 is not None and spo2 < 95)
         or bpm < 60
         or bpm > 100
         or (temp_available and temperature > 37.2)

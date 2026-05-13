@@ -15,7 +15,7 @@ _device_secret = os.getenv("DEVICE_SECRET", "")
 
 
 class ReadingIn(BaseModel):
-    spo2: float
+    spo2: float | None = None
     bpm: int
     temperature: float
     timestamp: int | None = None
