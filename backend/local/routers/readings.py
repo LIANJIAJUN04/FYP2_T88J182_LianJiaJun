@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import datetime, timezone
 
@@ -37,7 +38,8 @@ async def receive_reading(body: ReadingIn, request: Request):
 
     ts = datetime.now(timezone.utc)
 
-    write_reading(
+    await asyncio.to_thread(
+        write_reading,
         patient_id=patient_id,
         spo2=body.spo2,
         bpm=body.bpm,
