@@ -1,79 +1,141 @@
-#include <ArduinoJson.h>
-#include <math.h>
-#include "config.h"
-#include "sensors.h"
+#include <Wire.h>
+#include "MAX30105.h"
+#include "heartRate.h"
+#include <Adafruit_MLX90614.h>
 
-// ── LED helpers ───────────────────────────────────────────────────────────────
-static void ledOk() {
-  digitalWrite(LED_GREEN, HIGH);
-  digitalWrite(LED_RED,   LOW);
+// ======================================================
+// SENSORS
+// ======================================================
+MAX30105 particleSensor;
+Adafruit_MLX90614 mlx = Adafruit_MLX90614();
+
+// ======================================================
+// HEART RATE VARIABLES
+// ======================================================
+const byte RATE_SIZE = 4;
+
+byte rates[RATE_SIZE];
+byte rateSpot = 0;
+byte beatCount = 0;
+
+long lastBeat = 0;
+
+float beatsPerMinute;
+int beatAvg = 0;
+
+// ======================================================
+// TEMPERATURE
+// ======================================================
+float bodyTemp = 0;
+
+// ======================================================
+// TIMERS
+// ======================================================
+unsigned long lastJson = 0;
+unsigned long lastTempRead = 0;
+
+// ======================================================
+// SETUP
+// ======================================================
+void setup()
+{
+  Serial.begin(115200);
+
+  Wire.begin(21, 22);
+
+  // ======================================================
+  // MAX30102 INIT
+  // ======================================================
+  if (!particleSensor.begin(Wire, I2C_SPEED_STANDARD))
+  {
+    while (1);
+  }
+
+  particleSensor.setup(
+    20,
+    4,
+    2,
+    100,
+    411,
+    2048
+  );
+
+  particleSensor.setPulseAmplitudeGreen(0);
+
+  // ======================================================
+  // MLX90614 INIT
+  // ======================================================
+  mlx.begin();
 }
 
-static void ledError() {
-  digitalWrite(LED_GREEN, LOW);
-  digitalWrite(LED_RED,   HIGH);
-}
+// ======================================================
+// LOOP
+// ======================================================
+void loop()
+{
+  // ======================================================
+  // READ IR ONLY
+  // ======================================================
+  long irValue = particleSensor.getIR();
 
-// ── Serial transmit ───────────────────────────────────────────────────────────
-static void sendReading(float spo2, int bpm, float temperature) {
-  StaticJsonDocument<200> doc;
-  doc["spo2"]        = spo2;
-  doc["bpm"]         = bpm;
-  doc["temperature"] = temperature;
-  doc["timestamp"]   = millis() / 1000;
+  // ======================================================
+  // HEARTBEAT DETECTION
+  // ======================================================
+  if (checkForBeat(irValue))
+  {
+    long delta = millis() - lastBeat;
+    lastBeat = millis();
 
-  serializeJson(doc, Serial);
-  Serial.println(); // newline terminates the JSON line
-}
+    beatsPerMinute = 60.0 / (delta / 1000.0);
 
-// ─────────────────────────────────────────────────────────────────────────────
+    // VALID BPM ONLY
+    if (beatsPerMinute > 50 && beatsPerMinute < 120)
+    {
+      rates[rateSpot++] = (byte)beatsPerMinute;
+      rateSpot %= RATE_SIZE;
 
-void setup() {
-  Serial.begin(BAUD_RATE);
+      if (beatCount < RATE_SIZE)
+      {
+        beatCount++;
+      }
 
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_RED,   OUTPUT);
-  ledError(); // red while initialising
+      beatAvg = 0;
 
-  Wire.begin(SDA_PIN, SCL_PIN);
+      for (byte i = 0; i < beatCount; i++)
+      {
+        beatAvg += rates[i];
+      }
 
-  if (!sensorsBegin()) {
-    Serial.println("[setup] Sensor init failed — halting");
-    while (true) {
-      ledError();
-      delay(500);
-      digitalWrite(LED_RED, LOW);
-      delay(500);
+      beatAvg /= beatCount;
     }
   }
 
-  ledOk();
-  Serial.println("[setup] Ready");
-}
+  // ======================================================
+  // TEMPERATURE ONLY EVERY 2 SECONDS
+  // ======================================================
+  if (millis() - lastTempRead > 2000)
+  {
+    lastTempRead = millis();
 
-void loop() {
-  unsigned long start = millis();
-
-  sensorsUpdate(); // slides buffer and recalculates SpO2 + BPM (~1 s)
-
-  float spo2        = readSpO2();
-  int   bpm         = readBPM();
-  float temperature = readTemperature();
-
-  if (spo2 < 0 || bpm < 0) {
-    Serial.printf("[loop] Invalid reading (spo2=%.1f bpm=%d temp=%.2f) — skipping\n",
-                  spo2, bpm, temperature);
-    ledError();
-    return;
+    bodyTemp = mlx.readObjectTempC();
   }
 
-  if (isnan(temperature)) temperature = 0.0f;
+  // ======================================================
+  // JSON OUTPUT
+  // ======================================================
+  if (millis() - lastJson > 2000)
+  {
+    lastJson = millis();
 
-  sendReading(spo2, bpm, temperature);
-  ledOk();
+    Serial.print("{\"bpm\":");
+    Serial.print(beatAvg);
 
-  long elapsed = (long)(millis() - start);
-  if (elapsed < POST_INTERVAL_MS) {
-    delay(POST_INTERVAL_MS - elapsed);
+    Serial.print(",\"temperature\":");
+    Serial.print(bodyTemp, 1);
+
+    Serial.print(",\"timestamp\":");
+    Serial.print(millis() / 1000);
+
+    Serial.println("}");
   }
 }
