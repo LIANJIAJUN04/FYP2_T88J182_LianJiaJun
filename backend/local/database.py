@@ -19,7 +19,7 @@ _query_api = _client.query_api()
 
 def write_reading(
     patient_id: str,
-    spo2: float,
+    spo2: float | None,
     bpm: int,
     temperature: float,
     status: str,
@@ -29,7 +29,6 @@ def write_reading(
     point = (
         Point("health_readings")
         .tag("patient_id", patient_id)
-        .field("spo2", float(spo2))
         .field("bpm", int(bpm))
         .field("temperature", float(temperature))
         .field("status", status)
@@ -37,4 +36,6 @@ def write_reading(
         .field("alert", alert)
         .time(datetime.now(timezone.utc), WritePrecision.NS)
     )
+    if spo2 is not None:
+        point = point.field("spo2", float(spo2))
     _write_api.write(bucket=_bucket, org=_org, record=point)
