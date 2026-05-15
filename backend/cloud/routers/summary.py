@@ -1,9 +1,13 @@
 import asyncio
+import logging
+import traceback
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from auth import require_auth
+
+logger = logging.getLogger(__name__)
 from claude_service import generate_summary
 from database import get_history, supabase
 
@@ -48,6 +52,7 @@ async def get_patient_summary(
     try:
         summary_text = await asyncio.to_thread(generate_summary, patient_meta, readings, period_label)
     except Exception as e:
+        logger.error("generate_summary failed: %s\n%s", e, traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"AI summary failed: {e}")
 
     return {
