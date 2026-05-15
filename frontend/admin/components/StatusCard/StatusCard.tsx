@@ -62,7 +62,7 @@ export function StatusCard({ status, lastUpdate, compact = false }: StatusCardPr
               style={{ background: cfg.dotColor, boxShadow: `0 0 10px ${cfg.dotColor}` }}
             />
             <motion.span
-              className="text-5xl font-black tracking-tight"
+              className="text-4xl font-black tracking-tight"
               style={{ color: cfg.textColor }}
             >
               {cfg.label}
