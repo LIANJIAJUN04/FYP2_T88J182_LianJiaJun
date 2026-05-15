@@ -16,6 +16,7 @@ import { StatusCard } from "@/components/StatusCard/StatusCard";
 import { GaugeCard } from "@/components/GaugeCard/GaugeCard";
 import { LiveChart } from "@/components/LiveChart/LiveChart";
 import { HistoryChart } from "@/components/HistoryChart/HistoryChart";
+import { AISummaryPanel } from "@/components/AISummaryPanel/AISummaryPanel";
 import { useCloudSSEStream } from "@/components/StatusCard/StatusCard.hooks";
 import type { Patient, Session, Alert, Reading } from "@/lib/api";
 
@@ -109,6 +110,7 @@ export default function PatientDetailPage() {
     );
   }
 
+  const token = getToken() ?? "";
   const activeSession = sessions.find((s) => !s.ended_at);
   const unresolvedCount = alertLog.filter((a) => !a.resolved_at).length;
 
@@ -363,6 +365,15 @@ export default function PatientDetailPage() {
             onToChange={setHistTo}
             onFetch={loadHistory}
           />
+        </motion.div>
+
+        {/* AI Summary panel */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.28 }}
+        >
+          <AISummaryPanel patientId={patientId} token={token} />
         </motion.div>
 
         {/* Bottom two logs */}
