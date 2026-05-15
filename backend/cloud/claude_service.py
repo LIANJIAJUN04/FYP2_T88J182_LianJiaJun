@@ -1,8 +1,8 @@
-import os
-
 import anthropic
 
-_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+# SDK auto-reads ANTHROPIC_API_KEY from environment; raises AuthenticationError at
+# request time (not startup) if the key is missing or invalid.
+_client = anthropic.Anthropic()
 
 
 def _compute_stats(readings: list[dict]) -> dict:
