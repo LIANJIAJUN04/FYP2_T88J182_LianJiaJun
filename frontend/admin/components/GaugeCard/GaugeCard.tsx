@@ -24,7 +24,7 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="rounded-2xl p-5 flex flex-col items-center gap-2"
+      className="rounded-2xl p-3 sm:p-5 flex flex-col items-center gap-1 sm:gap-2"
       style={{
         background: "rgba(255,255,255,0.04)",
         border: "1px solid rgba(255,255,255,0.08)",
@@ -34,13 +34,13 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
     >
       <div className="flex items-center gap-2 w-full">
         <span style={{ color: "#bec6e0" }}>{icon}</span>
-        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#c6c6cd" }}>
+        <span className="text-[9px] sm:text-xs font-semibold uppercase tracking-wide leading-tight" style={{ color: "#c6c6cd" }}>
           {label}
         </span>
       </div>
 
-      <div className="relative">
-        <svg width="160" height="120" viewBox="0 0 160 120">
+      <div className="relative w-full">
+        <svg className="w-full" viewBox="0 0 160 120">
           <path
             d={trackPath}
             fill="none"
@@ -80,7 +80,7 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
             initial={{ scale: 0.85, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.3 }}
-            className="text-3xl font-black tabular-nums leading-none"
+            className="text-xl sm:text-3xl font-black tabular-nums leading-none"
             style={{ color, fontFamily: "'Space Grotesk', monospace" }}
           >
             {value !== null ? (metric === "temperature" ? value.toFixed(1) : Math.round(value)) : "--"}
