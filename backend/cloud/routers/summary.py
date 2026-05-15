@@ -46,7 +46,7 @@ async def get_patient_summary(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch readings: {e}")
 
-    if len(readings) < 5:
+    if len(readings) < 2:
         raise HTTPException(status_code=422, detail="Not enough data for this period. Try a longer time range.")
 
     try:

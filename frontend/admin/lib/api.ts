@@ -10,7 +10,11 @@ async function apiFetch<T>(path: string, token: string, opts: RequestInit = {}):
     },
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`API ${res.status}: ${path}`);
+  if (!res.ok) {
+    let detail: string | undefined;
+    try { detail = (await res.json()).detail; } catch { /* ignore parse errors */ }
+    throw new Error(detail ?? `API ${res.status}: ${path}`);
+  }
   return res.json() as Promise<T>;
 }
 
