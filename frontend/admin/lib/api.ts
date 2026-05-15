@@ -82,3 +82,16 @@ export function fetchHistory(patientId: string, token: string, from: string, to:
 export function getStreamUrl(patientId: string, token: string): string {
   return `${BASE}/api/patients/${patientId}/stream?token=${encodeURIComponent(token)}`;
 }
+
+export interface SummaryResult {
+  summary: string;
+  period: string;
+  readings_count: number;
+}
+
+export function fetchSummary(patientId: string, token: string, range: string) {
+  return apiFetch<SummaryResult>(
+    `/api/patients/${patientId}/summary?range=${range}`,
+    token
+  );
+}
