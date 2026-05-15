@@ -34,7 +34,7 @@ export function StatusCard({ status, lastUpdate, compact = false }: StatusCardPr
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
-        className="relative overflow-hidden rounded-2xl"
+        className="relative overflow-hidden rounded-2xl h-full"
         style={{
           background: cfg.bg,
           border: `1.5px solid ${cfg.border}`,
@@ -48,7 +48,7 @@ export function StatusCard({ status, lastUpdate, compact = false }: StatusCardPr
           />
         )}
 
-        <div className="flex flex-col items-center justify-center gap-4 px-8 py-10">
+        <div className="flex flex-col items-center justify-center gap-4 px-8 py-10 h-full">
           <p
             className="text-xs font-semibold uppercase tracking-[0.25em]"
             style={{ color: cfg.textColor, opacity: 0.7 }}
