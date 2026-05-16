@@ -18,11 +18,22 @@ const FIELD_STYLE = {
   transition: "border-color 0.2s",
 };
 
+function formatIC(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 12);
+  if (digits.length <= 6) return digits;
+  if (digits.length <= 8) return `${digits.slice(0, 6)}-${digits.slice(6)}`;
+  return `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8)}`;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [form, setForm] = useState({ ic_number: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  function handleICChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setForm((f) => ({ ...f, ic_number: formatIC(e.target.value) }));
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,10 +98,12 @@ export default function LoginPage() {
               </label>
               <input
                 type="text"
+                inputMode="numeric"
                 value={form.ic_number}
-                onChange={(e) => setForm((f) => ({ ...f, ic_number: e.target.value }))}
+                onChange={handleICChange}
                 placeholder="990101-14-1234"
                 required
+                maxLength={14}
                 style={FIELD_STYLE}
                 onFocus={(e) => (e.target.style.borderColor = "#4cd7f6")}
                 onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
