@@ -73,7 +73,7 @@ def post_reading(payload: dict) -> bool:
         ok = 200 <= r.status_code < 300
         status = r.json().get("health_status", "?") if ok else r.status_code
         print(f"[bridge] {'ok' if ok else 'err'} ({status}) | "
-              f"BPM={payload.get('bpm')} Temp={payload.get('temperature')}")
+              f"SpO2={payload.get('spo2')} BPM={payload.get('bpm')} Temp={payload.get('temperature')}")
         return ok
     except requests.exceptions.ConnectionError:
         print("[bridge] Cannot reach local backend — is it running?")
