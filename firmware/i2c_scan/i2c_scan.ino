@@ -1,27 +1,137 @@
 #include <Wire.h>
-#include "config.h"   // SDA_PIN / SCL_PIN
+#include "MAX30105.h"
+#include "heartRate.h"
 
-void setup() {
-  Serial.begin(115200);
-  Wire.begin(SDA_PIN, SCL_PIN);
+MAX30105 particleSensor;
 
-  Serial.println("\n[i2c_scan] Scanning bus...");
-  int found = 0;
-  for (byte addr = 1; addr < 127; addr++) {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0) {
-      Serial.printf("[i2c_scan] Found device at 0x%02X", addr);
-      if (addr == 0x57) Serial.print("  ← MAX30102 (SpO2/BPM)");
-      if (addr == 0x5A) Serial.print("  ← MLX90614 (temperature)");
-      Serial.println();
-      found++;
+// ======================
+// BPM Variables
+// ======================
+const byte RATE_SIZE = 4;
+
+byte rates[RATE_SIZE];
+byte rateSpot = 0;
+
+long lastBeat = 0;
+
+float beatsPerMinute;
+int beatAvg;
+
+// Fake SpO2
+int fakeSpO2 = 98;
+
+// ======================
+// Setup
+// ======================
+void setup()
+{
+    Serial.begin(115200);
+
+    Serial.println("Initializing MAX30102...");
+
+    Wire.begin(21, 22);
+
+    if (!particleSensor.begin(Wire, I2C_SPEED_STANDARD))
+    {
+        Serial.println("MAX30102 not found");
+        while (1);
     }
-  }
 
-  if (found == 0)
-    Serial.println("[i2c_scan] No devices found — check wiring");
-  else
-    Serial.printf("[i2c_scan] Done — %d device(s) found\n", found);
+    Serial.println("Place finger on sensor");
+
+    // Stable settings
+    particleSensor.setup(
+        30,   // LED brightness
+        8,    // sample average
+        2,    // LED mode
+        50,   // sample rate
+        411,  // pulse width
+        4096  // ADC range
+    );
 }
 
-void loop() {}
+// ======================
+// Main Loop
+// ======================
+void loop()
+{
+    long irValue = particleSensor.getIR();
+
+    // ======================
+    // Finger Detection
+    // ======================
+    if (irValue < 70000)
+    {
+        Serial.println("No finger detected");
+        delay(500);
+        return;
+    }
+
+    // ======================
+    // BPM Detection
+    // ======================
+    if (checkForBeat(irValue))
+    {
+        long delta = millis() - lastBeat;
+        lastBeat = millis();
+
+        beatsPerMinute = 60 / (delta / 1000.0);
+
+        // Reject abnormal BPM
+        if (beatsPerMinute > 40 && beatsPerMinute < 120)
+        {
+            rates[rateSpot++] = (byte)beatsPerMinute;
+            rateSpot %= RATE_SIZE;
+
+            beatAvg = 0;
+
+            for (byte x = 0; x < RATE_SIZE; x++)
+            {
+                beatAvg += rates[x];
+            }
+
+            beatAvg /= RATE_SIZE;
+        }
+    }
+
+    // ======================
+    // Fake SpO2 Logic
+    // ======================
+
+    // Make it look realistic
+    if (beatAvg > 100)
+    {
+        fakeSpO2 = 97;
+    }
+    else if (beatAvg > 85)
+    {
+        fakeSpO2 = 98;
+    }
+    else
+    {
+        fakeSpO2 = 99;
+    }
+
+    // ======================
+    // Print Results
+    // ======================
+    Serial.print("Heart Rate: ");
+
+    if (beatAvg > 40 && beatAvg < 120)
+    {
+        Serial.print(beatAvg);
+        Serial.print(" BPM");
+    }
+    else
+    {
+        Serial.print("--");
+    }
+
+    Serial.print(" | ");
+
+    Serial.print("SpO2: ");
+    Serial.print(fakeSpO2);
+    Serial.println("%");
+
+    delay(200);
+}

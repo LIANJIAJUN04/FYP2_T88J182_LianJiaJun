@@ -39,55 +39,67 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
         </span>
       </div>
 
-      <div className="relative w-full">
-        <svg className="w-full" viewBox="0 0 160 120">
-          <path
-            d={trackPath}
+      <svg className="w-full" viewBox="0 0 160 120">
+        <path
+          d={trackPath}
+          fill="none"
+          stroke="#353436"
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
+        {valuePath && (
+          <motion.path
+            d={valuePath}
             fill="none"
-            stroke="#353436"
+            stroke={color}
             strokeWidth="8"
             strokeLinecap="round"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            style={{ filter: `drop-shadow(0 0 6px ${color})` }}
           />
-          {valuePath && (
-            <motion.path
-              d={valuePath}
-              fill="none"
-              stroke={color}
-              strokeWidth="8"
-              strokeLinecap="round"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
+        )}
+        {value !== null && (() => {
+          const toRad = (d: number) => (d * Math.PI) / 180;
+          const tipX = CX + R * Math.cos(toRad(angle));
+          const tipY = CY + R * Math.sin(toRad(angle));
+          return (
+            <circle
+              cx={tipX} cy={tipY} r="5" fill={color}
               style={{ filter: `drop-shadow(0 0 6px ${color})` }}
             />
-          )}
-          {value !== null && (() => {
-            const toRad = (d: number) => (d * Math.PI) / 180;
-            const tipX = CX + R * Math.cos(toRad(angle));
-            const tipY = CY + R * Math.sin(toRad(angle));
-            return (
-              <circle
-                cx={tipX} cy={tipY} r="5" fill={color}
-                style={{ filter: `drop-shadow(0 0 6px ${color})` }}
-              />
-            );
-          })()}
-        </svg>
-
-        <div className="absolute inset-0 flex flex-col items-center justify-end pb-4">
-          <motion.span
-            key={value}
-            initial={{ scale: 0.85, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.3 }}
-            className="text-xl sm:text-3xl font-black tabular-nums leading-none"
-            style={{ color, fontFamily: "'Space Grotesk', monospace" }}
-          >
-            {value !== null ? (metric === "temperature" ? value.toFixed(1) : Math.round(value)) : "--"}
-          </motion.span>
-          <span className="text-xs font-medium mt-0.5" style={{ color: "#909097" }}>{unit}</span>
-        </div>
-      </div>
+          );
+        })()}
+        {/* Value text lives in SVG coordinate space — always centered in the arc at every screen size */}
+        <motion.text
+          key={String(value)}
+          x={CX}
+          y={78}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize="24"
+          fontWeight="900"
+          fill={color}
+          fontFamily="'Space Grotesk', monospace"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          {value !== null ? (metric === "temperature" ? value.toFixed(1) : Math.round(value)) : "--"}
+        </motion.text>
+        <text
+          x={CX}
+          y={96}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize="11"
+          fontWeight="500"
+          fill="#909097"
+        >
+          {unit}
+        </text>
+      </svg>
     </motion.div>
   );
 }
