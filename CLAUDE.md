@@ -37,6 +37,7 @@ A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and
 | Time-series (cloud) | InfluxDB Cloud (Singapore region) | Cloud |
 | Relational DB | Supabase Postgres | Cloud |
 | Auth | Supabase Auth (admin) + shared nurse password (bedside) | Cloud |
+| AI summarization | Claude API (`claude-haiku-4-5`) | Cloud (on-demand) |
 | Bedside frontend | Next.js | localhost:3001 |
 | Admin frontend | Next.js | Vercel |
 
@@ -153,13 +154,15 @@ MediSync/
 │       ├── database.py              # InfluxDB Cloud + Supabase clients
 │       ├── auth.py                  # Supabase Auth JWT middleware
 │       ├── status.py                # Same rule-based status logic
+│       ├── claude_service.py        # Claude API client + generate_summary()
 │       ├── railway.json             # Railway deploy config
 │       ├── routers/
 │       │   ├── patients.py          # GET /api/patients, GET /api/patients/:id
 │       │   ├── stream.py            # GET /api/patients/:id/stream (SSE)
 │       │   ├── history.py           # GET /api/patients/:id/history
 │       │   ├── sessions.py          # GET /api/patients/:id/sessions
-│       │   └── alerts.py            # GET /api/alerts
+│       │   ├── alerts.py            # GET /api/alerts
+│       │   └── summary.py           # GET /api/patients/:id/summary
 │       └── requirements.txt
 │
 ├── frontend/
@@ -198,7 +201,8 @@ MediSync/
 │       │   ├── PatientTable/
 │       │   ├── LiveChart/
 │       │   ├── HistoryChart/
-│       │   └── AlertBadge/
+│       │   ├── AlertBadge/
+│       │   └── AISummaryPanel/      # Claude API on-demand clinical summary
 │       ├── proxy.ts                 # Redirect to / if no sb-token cookie
 │       └── lib/
 │           └── api.ts
@@ -291,17 +295,18 @@ Called on every `POST /api/readings`. Result included in:
 - SSE stream payload
 - Cloud sync queue
 
-### Status vs ML Prediction — Two Separate Things
+### Status vs ML Prediction vs AI Summary — Three Separate Things
 
-| | Rule-based Status | ML Anomaly Detection (Phase 9) |
-|---|---|---|
-| Logic | Simple if/else thresholds | Trained model on patterns |
-| Available | Phase 4 | Phase 9 |
-| What it catches | Known dangerous values | Subtle patterns within normal range |
-| Example | SpO₂ = 88% → danger | SpO₂ fluctuating abnormally fast at 95% |
-| Displayed as | `StatusCard` — NORMAL / WARNING / DANGER | `AlertBadge` — normal / anomaly |
+| | Rule-based Status | ML Anomaly Detection (Phase 9) | AI Health Summary |
+|---|---|---|---|
+| Logic | Simple if/else thresholds | Trained model on patterns | Claude API narrative |
+| Available | Phase 4 | Phase 9 | Phase 8.5 |
+| What it catches | Known dangerous values | Subtle patterns within normal range | Macro trends + cross-metric correlation |
+| Example | SpO₂ = 88% → danger | SpO₂ fluctuating abnormally fast at 95% | "Heart rate and temp both elevated — may indicate systemic stress" |
+| Displayed as | `StatusCard` — NORMAL / WARNING / DANGER | `AlertBadge` — normal / anomaly | `AISummaryPanel` — on-demand text report |
+| Triggered by | Every reading | Every reading | Clinician clicks Generate |
 
-Both are shown on the dashboard. StatusCard is always available from Phase 4 onwards.
+StatusCard is always available from Phase 4 onwards. AI Summary is available from Phase 8.5.
 
 ---
 
@@ -366,6 +371,8 @@ CLOUD_INFLUX_BUCKET=health_cloud
 
 SUPABASE_URL=https://rzzxrlfgmkdoarglcpdw.supabase.co
 SUPABASE_SERVICE_KEY=your-service-key
+
+ANTHROPIC_API_KEY=your-anthropic-api-key
 ```
 
 ### Bedside Frontend (`frontend/bedside/.env.local`)
@@ -450,6 +457,18 @@ data: {"spo2":97.5,"bpm":72,"temperature":36.6,"status":"normal","prediction":"n
 #### GET `/api/patients/:id/history` — `?from=2025-05-01&to=2025-05-06`
 #### GET `/api/patients/:id/sessions` — session log
 #### GET `/api/alerts` — alert log from Supabase
+
+#### GET `/api/patients/:id/summary` — AI clinical summary (auth required)
+```json
+// Query params: ?range=1h|6h|24h|7d  (default: 24h)
+// Response
+{
+  "summary": "During the last 24 hours, the patient maintained stable oxygenation...\n\nRecommended Attention Points:\n- Monitor SpO₂ trend...",
+  "period": "Last 24 hours",
+  "readings_count": 1440
+}
+```
+Fetches historical readings from InfluxDB Cloud for the requested window, computes per-metric stats (min/max/avg/warning/danger counts), and sends a structured prompt to `claude-haiku-4-5`. Returns 422 if fewer than 2 readings exist for the period.
 
 ---
 
@@ -780,6 +799,29 @@ python serial_bridge.py   # auto-detects ESP32 USB port
 
 ---
 
+### Phase 8.5 — Claude API AI Health Summary ✅
+- [x] Add `anthropic>=0.40.0` to `backend/cloud/requirements.txt`
+- [x] Implement `claude_service.py` — `_compute_stats()` aggregates per-metric min/max/avg/warning/danger counts from raw readings; `generate_summary()` builds structured prompt and calls `claude-haiku-4-5`
+- [x] Implement `GET /api/patients/:id/summary` in `routers/summary.py` — accepts `?range=1h|6h|24h|7d`, fetches history from InfluxDB Cloud, returns 422 if fewer than 2 readings
+- [x] Register `summary.router` in `backend/cloud/main.py`
+- [x] Build `AISummaryPanel` component in admin frontend (`AISummaryPanel.tsx`, `AISummaryPanel.hooks.ts`, `AISummaryPanel.types.ts`)
+- [x] Wire `AISummaryPanel` into `/patient/[id]` page
+- [x] Set `ANTHROPIC_API_KEY` in Railway dashboard
+
+**Claude prompt structure:**
+- Patient metadata (age, gender)
+- Period label and total reading count
+- Per-metric stats: SpO₂, BPM, Temperature (min/max/avg + warning/danger counts)
+- Reference threshold table
+- Instructs 3–4 paragraphs: Overall Status, SpO₂ Findings, Heart Rate Findings, Temperature Findings
+- Ends with "Recommended Attention Points" bullet list + one-line disclaimer
+
+**Done when:** Clinician selects a time range, clicks Generate Summary, and receives a structured clinical narrative in the admin patient detail page.
+
+**Completed:** 2026-05-20 — model: `claude-haiku-4-5-20251001`; stats pre-computed in Python before the API call (no raw data sent to Claude); `AISummaryPanel` shows loading spinner, error state, period badge, reading count, formatted narrative, and disclaimer.
+
+---
+
 ### Phase 9 — ML Anomaly Detection
 - [ ] Collect 500+ readings across sessions (rest, movement, post-exercise)
 - [ ] Export from InfluxDB to `ml/data/readings.csv`
@@ -852,3 +894,7 @@ cd firmware && python serial_bridge.py
 - InfluxDB Cloud free tier: 5MB/5min write limit, 30-day retention — sufficient for prototype
 - Nurse password is a single shared secret in `.env` — not per-nurse, not stored in DB
 - Cloud backend on Railway needs `CLOUD_INFLUX_ORG` and `CLOUD_INFLUX_BUCKET` set explicitly — they do not default
+- `claude_service.py` pre-computes stats in Python before calling the API — never send raw reading arrays to the model
+- `ANTHROPIC_API_KEY` is read by the Anthropic SDK automatically from the environment — no explicit `os.getenv` needed in `claude_service.py`
+- AI summary requires at least 2 readings for the selected period; returns HTTP 422 otherwise
+- Summary endpoint uses `asyncio.to_thread` for both the InfluxDB query and the Claude call — neither is async-native

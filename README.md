@@ -30,6 +30,7 @@ An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine
 | Time-series (cloud) | InfluxDB Cloud (Singapore) | Cloud |
 | Relational DB | Supabase Postgres | Cloud |
 | Auth | Supabase Auth (admin) + shared nurse password (bedside) | Cloud |
+| AI summarization | Claude API (`claude-haiku-4-5`) | Cloud (on-demand) |
 | Bedside frontend | Next.js | localhost:3001 |
 | Admin frontend | Next.js | Vercel |
 
@@ -61,13 +62,15 @@ MediSync/
 │       ├── status.py       # Same rule-based get_status()
 │       ├── database.py     # InfluxDB Cloud read client + Supabase client
 │       ├── auth.py         # Supabase Auth JWT middleware (require_auth)
+│       ├── claude_service.py  # Claude API client + generate_summary()
 │       ├── Procfile        # Railway start command
 │       ├── routers/
 │       │   ├── patients.py # GET /api/patients, GET /api/patients/:id
 │       │   ├── stream.py   # GET /api/patients/:id/stream (SSE)
 │       │   ├── history.py  # GET /api/patients/:id/history
 │       │   ├── sessions.py # GET /api/patients/:id/sessions
-│       │   └── alerts.py   # GET /api/alerts
+│       │   ├── alerts.py   # GET /api/alerts
+│       │   └── summary.py  # GET /api/patients/:id/summary (AI Health Summary)
 │       └── requirements.txt
 ├── frontend/
 │   ├── bedside/            # Next.js — localhost
@@ -94,6 +97,23 @@ MediSync/
 1. Admin logs in via Supabase Auth at the Vercel URL
 2. Dashboard shows summary cards and full patient table
 3. Click **View** on any patient to see live SSE stream, history chart, session log, and alert log
+4. Select a time range (1h / 6h / 24h / 7d) and click **Generate Summary** for an AI clinical narrative
+
+---
+
+## AI Health Summary
+
+The admin patient detail page includes an on-demand **AI Health Summary** powered by the Claude API (`claude-haiku-4-5`). Clinicians select a time range, click **Generate Summary**, and receive a structured clinical narrative covering:
+
+- **Overall patient status** during the period
+- **SpO₂ findings** and clinical implications
+- **Heart rate findings** and clinical significance
+- **Temperature findings** and any concern
+- **Recommended Attention Points** — 2–4 actionable items
+
+Pre-computed per-metric stats (min/max/avg, warning/danger reading counts) are sent to the model rather than raw data. The summary includes a disclaimer that it is AI-generated and not a substitute for clinical judgment.
+
+API endpoint: `GET /api/patients/:id/summary?range=1h|6h|24h|7d` (auth required, returns 422 if fewer than 2 readings in the window).
 
 ---
 
@@ -193,6 +213,8 @@ NEXT_PUBLIC_SUPABASE_URL=https://rzzxrlfgmkdoarglcpdw.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
+The AI Health Summary is served by the cloud backend. Set `ANTHROPIC_API_KEY` in the Railway dashboard (not in the frontend env).
+
 ### Cloud Backend (local dev)
 
 ```bash
@@ -253,6 +275,7 @@ See `CLAUDE.md` for the full variable reference.
 | 6 | Bedside frontend | ✅ Done |
 | 7 | Admin frontend | ✅ Done |
 | 8 | ESP32 firmware | ✅ Done |
+| 8.5 | Claude API AI Health Summary | ✅ Done |
 | 9 | ML anomaly detection | Pending |
 | 10 | Polish & hardening | Pending |
 
@@ -263,5 +286,6 @@ See `CLAUDE.md` for the full variable reference.
 - `model.pkl` is gitignored — retrain locally after cloning
 - `app.state.active_patient_id` is in-memory — restarting local FastAPI requires the nurse to log in again
 - `status.py` is duplicated in local and cloud backends — keep them in sync
-- ESP32 connects over WiFi (same LAN as bedside machine), not USB serial for HTTP
+- ESP32 sends readings over USB Serial to `serial_bridge.py`, not directly via WiFi/HTTP
 - InfluxDB Cloud free tier: 5 MB/5 min write limit, 30-day retention
+- `ANTHROPIC_API_KEY` must be set in Railway for the AI summary endpoint — it is not needed locally
