@@ -1,8 +1,29 @@
+import time
 import anthropic
 
 # SDK auto-reads ANTHROPIC_API_KEY from environment; raises AuthenticationError at
 # request time (not startup) if the key is missing or invalid.
 _client = anthropic.Anthropic()
+
+_RETRYABLE_STATUS = {529, 503, 500}
+
+
+def _create_with_retry(model: str, max_tokens: int, messages: list, max_retries: int = 3):
+    delay = 2.0
+    for attempt in range(max_retries):
+        try:
+            return _client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                messages=messages,
+            )
+        except anthropic.APIStatusError as e:
+            if e.status_code in _RETRYABLE_STATUS and attempt < max_retries - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise
+    raise RuntimeError("Unreachable")
 
 
 def _compute_stats(readings: list[dict]) -> dict:
@@ -85,7 +106,7 @@ End with a short bullet list titled "Recommended Attention Points" with 2–4 ac
 
 Keep the tone professional and concise. Do not repeat raw numbers already shown above — focus on interpretation and clinical implications. Add a one-line disclaimer at the end."""
 
-    response = _client.messages.create(
+    response = _create_with_retry(
         model="claude-haiku-4-5-20251001",
         max_tokens=700,
         messages=[{"role": "user", "content": prompt}],
