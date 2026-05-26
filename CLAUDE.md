@@ -321,10 +321,14 @@ data: {
   "temperature": 36.6,
   "status": "normal",
   "prediction": "normal",
+  "confidence": 0.6096,
   "alert": false,
   "ts": "2025-05-06T10:00:01Z"
 }
 ```
+
+`prediction` — ML model result: `"normal"` or `"anomaly"` (Phase 9).  
+`confidence` — probability of the predicted class (0–1). `0.0` when model not loaded or SpO₂ unavailable.
 
 ### Status Colours (Frontend)
 
@@ -437,14 +441,14 @@ No config file needed — edit constants at the top of the script.
 // Request headers: X-Device-Secret: <DEVICE_SECRET>
 { "spo2": 97.5, "bpm": 72, "temperature": 36.6, "timestamp": 1746518400 }
 // Response
-{ "status": "ok", "health_status": "normal", "prediction": "normal", "alert": false }
+{ "status": "ok", "health_status": "normal", "prediction": "normal", "confidence": 0.6096, "alert": false }
 ```
 
-Internally: run `get_status()`, write to local InfluxDB with `status` field + `patient_id` tag, run ML inference, queue cloud sync.
+Internally: run `get_status()`, run ML inference, apply OOD safety override (if `health_status == "danger"` and ML says `"normal"`, force `prediction = "anomaly"` and flip confidence), write to local InfluxDB with `status` + `confidence` fields + `patient_id` tag, queue cloud sync.
 
 #### GET `/api/stream`
 ```
-data: {"spo2":97.5,"bpm":72,"temperature":36.6,"status":"normal","prediction":"normal","alert":false,"ts":"..."}
+data: {"spo2":97.5,"bpm":72,"temperature":36.6,"status":"normal","prediction":"normal","confidence":0.6096,"alert":false,"ts":"..."}
 ```
 
 ---
@@ -625,24 +629,61 @@ async def receive(reading, request: Request):
 Detect subtle anomalies not caught by thresholds — unusual patterns within technically normal ranges.
 
 ### Algorithm
-- **Phase 1 (no labels):** Isolation Forest
-- **Phase 2 (labeled):** Random Forest classifier
+**XGBoost binary classifier** — `"High Risk"` / `"Low Risk"`.  
+Trained on `ml/health_risk_ml.ipynb` (18-section pipeline, 200,020 rows from Kaggle).  
+Externally validated on a separate hospital dataset (domain-shift test).  
+5 models evaluated (XGBoost, LightGBM, CatBoost, MLP, RandomForest) — XGBoost won by composite scorecard.
 
-### Features
+### Features (5 — static per reading, no rolling window)
 ```python
 features = [
-  "spo2", "bpm", "temperature",
-  "spo2_rolling_mean_5",
-  "bpm_rolling_std_5",
-  "temp_delta",
+  "BPM",            # Heart rate
+  "Temperature",    # Body temp °C
+  "SpO2",           # Oxygen saturation %
+  "temp_deviation", # abs(Temperature - 37.0)
+  "hr_spo2_ratio",  # BPM / SpO2
 ]
 ```
 
+### Clinical Threshold
+`0.5380` — Youden's J statistic, tuned on out-of-fold training predictions (no test-set leakage).  
+`predict_proba(X)[0][0]` = P(High Risk). If ≥ 0.5380 → `"anomaly"`, else `"normal"`.
+
+### Key Metrics
+| Metric | Value |
+|---|---|
+| CV AUC (50 rounds, RepeatedStratifiedKFold 5×10) | 0.7144 ± 0.0025 |
+| Clean Test AUC | 0.717 |
+| Clean Test Recall | 0.4306 |
+| External AUC (domain-shift) | 0.6975 |
+| External Recall | 0.7183 |
+
+### Artefacts (in `ml/`, gitignored — re-run notebook to regenerate)
+| File | Purpose |
+|---|---|
+| `ml/health_risk_model.joblib` | Trained XGBoost model |
+| `ml/health_risk_scaler.joblib` | StandardScaler (fit on train set only) |
+| `ml/health_risk_label_encoder.joblib` | LabelEncoder — "High Risk" / "Low Risk" |
+| `ml/model_metadata.json` | Audit trail + performance numbers |
+
 ### Integration
-- Loaded once at startup into `app.state.model`
-- Runs alongside rule-based status on every reading
-- Result stored as `prediction` field in InfluxDB
-- Shown as `AlertBadge` on dashboard (separate from `StatusCard`)
+- `backend/local/ml/predict.py` — `load_model()` + `run_inference(artefacts, bpm, temp, spo2)`
+- Loaded once at startup into `app.state.ml_model` (graceful: `None` if files missing)
+- Runs alongside rule-based status on every `POST /api/readings`
+- Result stored as `prediction` + `confidence` fields in both InfluxDB instances and SSE stream
+- `confidence` = probability of the *predicted* class (always ≥ 0.5 on a positive decision)
+- Shown as `AlertBadge` on bedside dashboard / `MLBadge` on admin patient detail (both separate from `StatusCard`)
+
+### OOD Safety Override (`readings.py`)
+The ML model was trained on in-range vitals (temperature ~36–40°C). Extreme out-of-distribution values — e.g. temperature 30°C (severe hypothermia), SpO₂ < 90%, BPM < 40 — fall outside the training distribution and the model cannot classify them reliably.
+
+**Rule applied in `POST /api/readings` after inference:**
+```python
+if health_status == "danger" and prediction == "normal":
+    prediction = "anomaly"
+    confidence = round(1.0 - confidence, 4)  # flip to P(anomaly)
+```
+This ensures ML never contradicts an obvious danger already caught by the rule engine. The rule-based system handles known extreme thresholds; the ML handles subtle within-normal patterns. Showing "NORMAL" ML alongside a DANGER status is clinically misleading and erodes trust.
 
 ---
 
@@ -822,20 +863,28 @@ python serial_bridge.py   # auto-detects ESP32 USB port
 
 ---
 
-### Phase 9 — ML Anomaly Detection
-- [ ] Collect 500+ readings across sessions (rest, movement, post-exercise)
-- [ ] Export from InfluxDB to `ml/data/readings.csv`
-- [ ] Engineer rolling features in `collect_data.ipynb`
-- [ ] Train Isolation Forest (`contamination=0.05`) in `train_model.ipynb`
-- [ ] Evaluate — target < 5% false positive on normal data
-- [ ] `joblib.dump(model, "backend/local/ml/model.pkl")`
-- [ ] Load at FastAPI startup into `app.state.model`
-- [ ] Run inference in `POST /api/readings`, store as `prediction` field in InfluxDB
-- [ ] Show `AlertBadge` on dashboard alongside `StatusCard`
+### Phase 9 — ML Anomaly Detection ✅
+- [x] Collect 500+ readings — used `ml/health_risk_ml.ipynb` on `human_vital_signs_dataset_2024.csv` (200,020 rows, Kaggle)
+- [x] External domain-shift validation — `patients_data_with_alerts.xlsx` (~50,000 rows, never trained on)
+- [x] Feature engineering — 5 static features: BPM, Temperature, SpO₂, temp_deviation, hr_spo2_ratio
+- [x] Train 5 models (XGBoost, LightGBM, CatBoost, MLP, RandomForest) with `RepeatedStratifiedKFold(5×10)`
+- [x] Evaluate — XGBoost selected via composite scorecard (CV AUC 0.7144, External Recall 0.7183)
+- [x] Clinical threshold tuning — Youden's J → 0.5380 (OOF-tuned, no test leakage)
+- [x] Probability calibration — Isotonic Regression on CV folds
+- [x] Artefacts saved: `ml/health_risk_model.joblib`, `ml/health_risk_scaler.joblib`, `ml/health_risk_label_encoder.joblib`
+- [x] Load at FastAPI startup into `app.state.ml_model` — `backend/local/main.py`
+- [x] Run inference in `POST /api/readings` — `prediction` + `confidence` fields stored in both InfluxDB instances and returned in SSE stream
+- [x] Show `AlertBadge` on bedside dashboard alongside `StatusCard`
+- [x] Show `MLBadge` on admin patient detail alongside `StatusCard`
 
-Note: `StatusCard` (rule-based) is already live from Phase 4. ML `AlertBadge` is an additive layer.
+Note: `StatusCard` (rule-based) is already live from Phase 4. ML `AlertBadge`/`MLBadge` is an additive layer.  
+Model differs from original plan — XGBoost (supervised) used instead of Isolation Forest (unsupervised); performs better on this labelled dataset.  
+Features are static per-reading (no rolling window needed — model was trained on static features).  
+Graceful degradation: if `ml/*.joblib` files are missing, `prediction` defaults to `"normal"`, `confidence` to `0.0`.
 
-**Done when:** Covering sensor triggers both DANGER on StatusCard and anomaly on AlertBadge.
+**Done when:** `POST /api/readings` returns `prediction: "anomaly"` + `confidence` when vitals show stress pattern; bedside `AlertBadge` and admin `MLBadge` update on every SSE event.
+
+**Completed:** 2026-05-26 — XGBoost (CV AUC 0.7144 ± 0.0025); artefacts in `ml/`; `backend/local/ml/predict.py`; `confidence` field in SSE stream + InfluxDB; bedside `AlertBadge`; admin `MLBadge`.
 
 ---
 
@@ -883,11 +932,13 @@ cd firmware && python serial_bridge.py
 ## Notes for Claude Code
 
 - `model.pkl` is gitignored — retrain locally after cloning
-- ML model loaded once at startup (`app.state.model`), never per-request
+- ML model loaded once at startup (`app.state.ml_model`), never per-request
 - `app.state.active_patient_id` is in-memory — restarting local FastAPI clears it, nurse must log in again
 - `status.py` is identical in both local and cloud backends — keep them in sync manually or extract to a shared `lib/` folder
 - Rule-based `StatusCard` works from Phase 4 with zero ML — do not block it on Phase 9
-- Rolling features require querying last 5 readings from local InfluxDB before ML inference
+- ML features are **static per-reading** (no rolling window) — BPM, Temperature, SpO₂, temp_deviation, hr_spo2_ratio
+- OOD safety override: if `health_status == "danger"` and ML says `"normal"`, `readings.py` forces `prediction = "anomaly"` and flips confidence — do not remove this guard
+- `confidence` must flow through all four downstream steps: `write_reading()`, `enqueue_reading()`, `last_reading` state, and the return payload — removing it breaks the SSE stream and InfluxDB records
 - SSE endpoints must set `Content-Type: text/event-stream` and disable response buffering
 - Never use `time.sleep()` in async FastAPI — always `asyncio.sleep()`
 - Both Next.js apps are fully independent — separate `package.json`, separate deploys

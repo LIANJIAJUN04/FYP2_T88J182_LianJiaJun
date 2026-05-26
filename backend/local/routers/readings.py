@@ -10,7 +10,7 @@ from database import write_reading
 from limiter import limiter
 from ml.predict import run_inference
 from status import get_status
-from supabase_client import insert_alert
+from supabase_client import upsert_alert, resolve_alerts_for_patient
 from sync import enqueue_reading
 
 router = APIRouter()
@@ -63,33 +63,35 @@ async def receive_reading(body: ReadingIn, request: Request):
 
     ts = datetime.now(timezone.utc)
 
-    # ── Write Supabase alert rows ──────────────────────────────────────────
+    # ── Write Supabase alert rows (session-style — one row per event, not per second) ──
     if alert:
         alert_writes: list = []
 
         if health_status == "danger":
-            # One row per metric that crossed a danger threshold
+            # One alert per metric that crossed a danger threshold.
+            # upsert_alert skips the insert if an unresolved alert already exists
+            # for the same patient + metric, so this never floods the table.
             if body.spo2 is not None and body.spo2 < 90:
                 alert_writes.append(
-                    asyncio.to_thread(insert_alert, patient_id, "spo2", body.spo2)
+                    asyncio.to_thread(upsert_alert, patient_id, "spo2", body.spo2)
                 )
             if body.bpm < 40 or body.bpm > 130:
                 alert_writes.append(
-                    asyncio.to_thread(insert_alert, patient_id, "bpm", float(body.bpm))
+                    asyncio.to_thread(upsert_alert, patient_id, "bpm", float(body.bpm))
                 )
             if body.temperature > 38 or body.temperature < 35:
                 alert_writes.append(
-                    asyncio.to_thread(insert_alert, patient_id, "temperature", body.temperature)
+                    asyncio.to_thread(upsert_alert, patient_id, "temperature", body.temperature)
                 )
 
         else:
             # ML-only anomaly — log the metric furthest from its normal midpoint
             deviations: dict[str, float] = {
-                "bpm": abs(body.bpm - 80) / 20.0,          # normal midpoint 80, ±20 to warning
-                "temperature": abs(body.temperature - 36.65) / 0.55,  # midpoint 36.65
+                "bpm": abs(body.bpm - 80) / 20.0,
+                "temperature": abs(body.temperature - 36.65) / 0.55,
             }
             if body.spo2 is not None:
-                deviations["spo2"] = (97.5 - body.spo2) / 2.5  # low SpO2 is worse
+                deviations["spo2"] = (97.5 - body.spo2) / 2.5
 
             worst = max(deviations, key=deviations.get)
             worst_value = {
@@ -98,11 +100,15 @@ async def receive_reading(body: ReadingIn, request: Request):
                 "temperature": body.temperature,
             }[worst]
             alert_writes.append(
-                asyncio.to_thread(insert_alert, patient_id, worst, worst_value)
+                asyncio.to_thread(upsert_alert, patient_id, worst, worst_value)
             )
 
         if alert_writes:
             await asyncio.gather(*alert_writes)
+
+    else:
+        # Reading is safe — close any open alerts so resolved_at is stamped
+        await asyncio.to_thread(resolve_alerts_for_patient, patient_id)
 
     # ── Persist locally ────────────────────────────────────────────────────
     await asyncio.to_thread(
@@ -113,6 +119,7 @@ async def receive_reading(body: ReadingIn, request: Request):
         temperature=body.temperature,
         status=health_status,
         prediction=prediction,
+        confidence=confidence,
         alert=alert,
     )
 
@@ -123,6 +130,7 @@ async def receive_reading(body: ReadingIn, request: Request):
         temperature=body.temperature,
         status=health_status,
         prediction=prediction,
+        confidence=confidence,
         alert=alert,
         ts=ts,
     )
@@ -133,6 +141,7 @@ async def receive_reading(body: ReadingIn, request: Request):
         "temperature": body.temperature,
         "status": health_status,
         "prediction": prediction,
+        "confidence": confidence,
         "alert": alert,
         "ts": ts.isoformat(),
     }
@@ -141,5 +150,6 @@ async def receive_reading(body: ReadingIn, request: Request):
         "status": "ok",
         "health_status": health_status,
         "prediction": prediction,
+        "confidence": confidence,
         "alert": alert,
     }

@@ -52,10 +52,31 @@ def close_active_session(patient_id: str) -> None:
         .execute()
 
 
-def insert_alert(patient_id: str, metric: str, value: float) -> None:
-    """Write one row to the Supabase alerts table."""
-    client.table("alerts").insert({
-        "patient_id": patient_id,
-        "metric": metric,
-        "value": value,
-    }).execute()
+def upsert_alert(patient_id: str, metric: str, value: float) -> None:
+    """Open a new alert row only if there is no existing unresolved alert for
+    the same patient + metric.  This prevents one row per second flooding."""
+    existing = (
+        client.table("alerts")
+        .select("id")
+        .eq("patient_id", patient_id)
+        .eq("metric", metric)
+        .is_("resolved_at", "null")
+        .execute()
+    )
+    if not existing.data:
+        client.table("alerts").insert({
+            "patient_id": patient_id,
+            "metric": metric,
+            "value": value,
+        }).execute()
+
+
+def resolve_alerts_for_patient(patient_id: str) -> None:
+    """Stamp resolved_at on every open alert for this patient.
+    Called when a reading is no longer in the danger/anomaly state."""
+    now = datetime.now(timezone.utc).isoformat()
+    client.table("alerts") \
+        .update({"resolved_at": now}) \
+        .eq("patient_id", patient_id) \
+        .is_("resolved_at", "null") \
+        .execute()

@@ -10,6 +10,7 @@ export interface StreamReading {
   temperature: number;
   status: Status;
   prediction: string;
+  confidence: number;
   alert: boolean;
   ts: string;
 }

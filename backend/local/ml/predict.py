@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Resolve <project_root>/ML relative to this file's location
 # predict.py is at:  backend/local/ml/predict.py
 # project root:      ../../../../  (4 levels up)
-_ML_DIR = Path(__file__).resolve().parent.parent.parent.parent / "ML"
+_ML_DIR = Path(__file__).resolve().parent.parent.parent.parent / "ml"
 
 _THRESHOLD: float = 0.5380  # Youden's J (from model_metadata.json — Section 11)
 
