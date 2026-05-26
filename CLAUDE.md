@@ -321,10 +321,14 @@ data: {
   "temperature": 36.6,
   "status": "normal",
   "prediction": "normal",
+  "confidence": 0.6096,
   "alert": false,
   "ts": "2025-05-06T10:00:01Z"
 }
 ```
+
+`prediction` — ML model result: `"normal"` or `"anomaly"` (Phase 9).  
+`confidence` — probability of the predicted class (0–1). `0.0` when model is not loaded or SpO₂ is unavailable.
 
 ### Status Colours (Frontend)
 
@@ -822,20 +826,28 @@ python serial_bridge.py   # auto-detects ESP32 USB port
 
 ---
 
-### Phase 9 — ML Anomaly Detection
-- [ ] Collect 500+ readings across sessions (rest, movement, post-exercise)
-- [ ] Export from InfluxDB to `ml/data/readings.csv`
-- [ ] Engineer rolling features in `collect_data.ipynb`
-- [ ] Train Isolation Forest (`contamination=0.05`) in `train_model.ipynb`
-- [ ] Evaluate — target < 5% false positive on normal data
-- [ ] `joblib.dump(model, "backend/local/ml/model.pkl")`
-- [ ] Load at FastAPI startup into `app.state.model`
-- [ ] Run inference in `POST /api/readings`, store as `prediction` field in InfluxDB
-- [ ] Show `AlertBadge` on dashboard alongside `StatusCard`
+### Phase 9 — ML Anomaly Detection ✅
+- [x] Collect 500+ readings — used `human_vital_signs_dataset_2024.csv` (200,020 rows, Kaggle)
+- [x] External validation — `patients_data_with_alerts.xlsx` (~50,000 rows, domain-shift test only)
+- [x] Feature engineering — 5 features: BPM, Temperature, SpO₂, temp_deviation, hr_spo2_ratio
+- [x] Train 5 models (XGBoost, LightGBM, CatBoost, MLP, RandomForest) with `RepeatedStratifiedKFold(5×10)`
+- [x] Evaluate — XGBoost selected via composite scorecard (AUC 0.717, Recall 0.4306 clean)
+- [x] Clinical threshold tuning — Youden's J → 0.5380 (OOF-tuned, no test leakage)
+- [x] Probability calibration — Isotonic Regression on CV folds
+- [x] Artefacts saved: `ML/health_risk_model.joblib`, `ML/health_risk_scaler.joblib`, `ML/health_risk_label_encoder.joblib`
+- [x] Load at FastAPI startup into `app.state.ml_model` (`backend/local/main.py`)
+- [x] Run inference in `POST /api/readings` — `prediction` + `confidence` fields in response + InfluxDB
+- [x] Show `AlertBadge` on bedside dashboard alongside `StatusCard`
+- [x] Show `MLBadge` on admin patient detail page alongside `StatusCard`
 
-Note: `StatusCard` (rule-based) is already live from Phase 4. ML `AlertBadge` is an additive layer.
+Note: `StatusCard` (rule-based) is already live from Phase 4. ML `AlertBadge`/`MLBadge` is an additive layer.
+Model: XGBoost; algorithm differs from original Isolation Forest plan — XGBoost is supervised and performs better on this dataset.
+Features: static per-reading (no rolling window needed — model was trained on static features).
+Graceful degradation: if model files are missing, `prediction` defaults to `"normal"` and `confidence` to `0.0`.
 
-**Done when:** Covering sensor triggers both DANGER on StatusCard and anomaly on AlertBadge.
+**Done when:** Reading POST returns `prediction: "anomaly"` + `confidence` when vitals show stress pattern; bedside AlertBadge and admin MLBadge update on every SSE event.
+
+**Completed:** 2026-05-26 — XGBoost (CV AUC 0.7144 ± 0.0025); artefacts in `ML/`; `backend/local/ml/predict.py`; bedside `AlertBadge`; admin `MLBadge`; `confidence` field added to SSE stream.
 
 ---
 

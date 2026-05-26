@@ -43,6 +43,7 @@ def _record_to_reading(record) -> dict:
         "temperature": v.get("temperature"),
         "status": v.get("status", "normal"),
         "prediction": v.get("prediction", "normal"),
+        "confidence": float(v.get("confidence", 0.0)),
         "alert": bool(v.get("alert", False)),
         "ts": record.get_time().isoformat(),
     }

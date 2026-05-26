@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Activity, LogOut, Wifi, WifiOff, Droplets, HeartPulse, Thermometer } from "lucide-react";
 import { StatusCard } from "@/components/StatusCard/StatusCard";
+import { AlertBadge } from "@/components/AlertBadge/AlertBadge";
 import { GaugeCard } from "@/components/GaugeCard/GaugeCard";
 import { LiveChart } from "@/components/LiveChart/LiveChart";
 import { useSSEStream } from "@/components/StatusCard/StatusCard.hooks";
+import type { MLPrediction } from "@/components/AlertBadge/AlertBadge.types";
 import { getActivePatient, sessionLogout } from "@/lib/api";
 
 interface Patient {
@@ -139,6 +141,18 @@ export default function DashboardPage() {
           <StatusCard
             status={status}
             lastUpdate={latest ? formatTime(latest.ts) : undefined}
+          />
+        </motion.div>
+
+        {/* ML AlertBadge — anomaly detection (Phase 9) */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.18 }}
+        >
+          <AlertBadge
+            prediction={(latest?.prediction ?? "normal") as MLPrediction}
+            confidence={latest?.confidence}
           />
         </motion.div>
 
