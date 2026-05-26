@@ -1,0 +1,247 @@
+# 🏥 Wearable Health Risk ML Pipeline — Quick Reference
+
+> **One-line summary:** A complete, clinically-rigorous ML pipeline that trains 5 models to classify patients as **High Risk / Low Risk** using only 3 wearable vital signs (heart rate, SpO₂, body temperature), then validates them under sensor noise, domain shift, and streaming deployment conditions.
+
+---
+
+## 📁 Project Structure
+
+```
+ML/
+├── health_risk_ml.ipynb          # Main notebook — all 18 sections
+├── raw/
+│   ├── human_vital_signs_dataset_2024.csv   # Dataset 1 — training source
+│   └── patients_data_with_alerts.xlsx        # Dataset 2 — external validation only
+├── results/
+│   ├── health_risk_model.joblib             # Saved best model (XGBoost)
+│   ├── health_risk_scaler.joblib            # StandardScaler (fit on train set only)
+│   ├── health_risk_label_encoder.joblib     # LabelEncoder (High Risk / Low Risk)
+│   ├── model_metadata.json                  # Audit trail + performance numbers
+│   └── fig_*.png                            # All generated figures
+└── catboost_info/                            # CatBoost training logs
+```
+
+---
+
+## 🎯 Problem Statement
+
+**Can a smartwatch — measuring only heart rate, oxygen saturation, and body temperature — reliably flag high-risk patients, even when sensor readings are noisy?**
+
+- **Task:** Binary classification → `High Risk` vs `Low Risk`
+- **Input signals:** BPM, SpO₂ (%), Body Temperature (°C) — wearable-only, no lab results
+- **Key challenge:** Real-world deployment requires robustness to sensor noise, generalisation across different hospitals/devices, and clinically trustworthy probability outputs.
+
+---
+
+## 📦 Datasets
+
+| Dataset | Source | Size | Role |
+|---------|--------|------|------|
+| **Dataset 1** — `human_vital_signs_dataset_2024.csv` | [Kaggle](https://www.kaggle.com/datasets/nasirayub2/human-vital-sign-dataset) | 200,020 rows | **Training + internal test** |
+| **Dataset 2** — `patients_data_with_alerts.xlsx` | [Kaggle](https://www.kaggle.com/datasets/prokashbarmancu/iomt-alert) | ~50,000 rows | **External validation only — never trained on** |
+
+### ⚠️ Critical Design Choice — Tautology Prevention
+Dataset 2 contains device-generated alert flags (`Heart Rate Alert = High`, `SpO2 Alert = Low`). Deriving risk labels from these flags and then training on them would be **circular reasoning** — the model would simply re-learn the alert rules we wrote, not genuine physiology. Therefore:
+- **Dataset 1** → training + test split (has independent risk labels)
+- **Dataset 2** → external domain-shift validation only
+
+---
+
+## 🩺 Section-by-Section Pipeline
+
+### Section 1 — Data Loading
+- Loaded both datasets; inspected shapes, dtypes, missing values.
+- `GLOBAL_SEED = 42` set first for full reproducibility across all libraries.
+
+### Section 2 — Research Design
+- Assigned strict roles to each dataset (training vs. external validation).
+- Standardised column names: `Heart Rate → BPM`, `Body Temperature → Temperature`, `SpO2 → SpO2`.
+- Dataset 2 labels derived from alert flags for validation scoring only.
+
+### Section 3 — Medical Data Cleaning
+Removed physically impossible vital-sign readings (not imputed — in healthcare, removing is safer than guessing):
+
+| Vital Sign | Valid Min | Valid Max | Clinical Reason |
+|-----------|----------|----------|----------------|
+| BPM | 30 | 220 | Outside range = sensor error, not a real patient |
+| SpO₂ | 70% | 100% | Below 70% is incompatible with consciousness |
+| Temperature | 34.0 °C | 42.0 °C | Below 34 = severe hypothermia; above 42 = lethal |
+
+### Section 4 — Exploratory Data Analysis
+- Feature distributions by risk class (violin/KDE plots)
+- Class balance: ~59% High Risk vs ~41% Low Risk in Dataset 1
+- Correlation heatmap and box plots per class
+
+### Section 5 — Wearable Noise Simulation
+Simulated **correlated** noise (multiple sensors fail together from one cause), not independent random noise:
+
+| Noise Event | Coverage | BPM Effect | SpO₂ Effect | Temp Effect |
+|-------------|----------|-----------|------------|------------|
+| Motion burst | 30% of records | +5–15 spike | −2–5% drop | +0.1–0.3 °C |
+| Fever/exertion | 20% of records | +10–20 rise | −1–2% drop | +0.5–1.0 °C |
+| Background noise | 100% of records | ±3 random | ±1% random | ±0.15 °C |
+| Sensor dropout | 10% of readings | NaN | NaN | NaN |
+
+Dropout gaps filled using **column-wise median imputation** (cross-sectional standard — preserves individual signal, does not mask events with time-series interpolation).
+
+### Section 6 — Feature Engineering
+Created 3 derived features on top of the 3 raw signals:
+
+| Feature | Formula | Clinical Meaning |
+|---------|---------|-----------------|
+| `spo2_deficit` | `100 − SpO₂` | Directly measures oxygenation shortfall |
+| `temp_deviation` | `\|Temperature − 37.0\|` | Distance from normal 37 °C (captures both fever and hypothermia) |
+| `hr_spo2_ratio` | `BPM ÷ SpO₂` | Stress index — rises when heart compensates for low oxygen |
+
+**Final feature set (5 features):** `BPM`, `Temperature`, `SpO2`, `temp_deviation`, `hr_spo2_ratio`
+
+> `spo2_deficit` was validated via VIF and ablation study but excluded from the production set (high collinearity with SpO₂). An earlier `hr_risk_flag` feature was removed — it encoded a hard-coded clinical rule, which would have caused data leakage.
+
+### Section 6b — Feature Validation
+- **VIF (Variance Inflation Factor):** confirmed no severe collinearity in the final 5-feature set
+- **Ablation study:** trained model 6 ways, each dropping/adding one feature, confirmed each feature contributes genuine signal
+
+### Section 7 — Model Training
+- **Split:** 80% train / 20% test (stratified — preserves 59/41 class ratio in both sets)
+- **Training size:** 160,016 samples; **Test size:** 40,004 samples
+- **5 architectures evaluated:**
+
+| Model | Algorithm Family | Key Strength |
+|-------|-----------------|--------------|
+| XGBoost | Gradient-boosted trees (depth-first) | Fast, widely-used benchmark |
+| LightGBM | Gradient-boosted trees (leaf-wise) | Faster on large data |
+| CatBoost | Gradient-boosted trees (oblivious) | Excellent on mixed data, production anchor |
+| MLP | Neural network | Non-tree architectural diversity |
+| RandomForest | Bagged decision trees | Variance reduction via independent parallel trees |
+
+- **Hyperparameter search:** `RandomizedSearchCV` per model (not hardcoded — each algorithm gets its own search space)
+- **Cross-validation:** `RepeatedStratifiedKFold(n_splits=5, n_repeats=10)` = **50 rounds** (required for statistical significance testing in Section 14)
+
+### Section 8 — Model Evaluation (Clean Test Set)
+- Metrics: Accuracy, **Recall (priority metric)**, Precision, F1, ROC-AUC
+- Confusion matrices and ROC curves for all 5 models
+- Prioritises **Recall** (sensitivity) — missing a High Risk patient is far worse than a false alarm
+
+### Section 9 — Noisy Robustness Validation
+- Re-evaluated all 5 models on the noisy version of Dataset 1 (from Section 5)
+- Measured **Recall degradation** per model under correlated sensor noise
+- Visualised clean vs. noisy performance side-by-side
+
+### Section 10 — External Domain-Shift Validation
+- Evaluated all models on Dataset 2 (different device protocol, different clinical context, different feature ranges)
+- Tested two scenarios: DS2 Clean and DS2 Noisy
+- DS2 external AUC for best model: **0.6975**, Recall: **0.7183**
+
+### Section 11 — Clinical Threshold Tuning
+- Default 0.50 threshold is not clinically validated; replaced with **Youden's J statistic** on out-of-fold training predictions (no test-set leakage)
+- **Youden's J = Sensitivity + Specificity − 1** — finds the threshold that best balances recall vs. false positives
+- XGBoost optimal threshold: **0.5380**
+
+### Section 12 — Probability Calibration
+- Uncalibrated probabilities are misleading (a model saying "80% High Risk" may not mean 80 in 100 patients are actually at risk)
+- Fitted **Isotonic Regression calibrator** on cross-validated training folds only (no test-set exposure)
+- Compared vs. Platt Scaling (Sigmoid); visualised with reliability diagrams
+
+### Section 13 — Final Model Selection
+Composite evidence scorecard with weights:
+
+| Dimension | Weight | Source |
+|-----------|--------|--------|
+| Clean AUC + Recall | 50% | Section 8 |
+| Noise Robustness | 20% | Section 9 |
+| Domain Generalisation | 20% | Section 10 |
+| CV Stability (CI width) | 10% | Section 7 |
+
+**Formula:** `Composite = AUC(25%) + Recall(25%) + Noise Robustness(20%) + Domain Shift(20%) + CV Stability(10%)`
+
+> **Selected model: XGBoost** (by composite scorecard under `GLOBAL_SEED = 42`)  
+> CatBoost is the designated production anchor — used if XGBoost shows no statistically significant lead.
+
+### Section 14 — Statistical Significance Testing
+- **Wilcoxon Signed-Rank Test** on 50 paired CV AUC scores (XGBoost vs. each other model)
+- **Holm-Bonferroni correction** applied for 4 simultaneous comparisons (FWER control)
+- Why 50 rounds matter: with only 5 folds, a perfect 5–0 sweep gives `p = 0.0625` — statistically impossible to reach `p < 0.05`. With 50 rounds, genuine differences are detectable.
+- ⚠️ Winner's Curse acknowledged: model selection and Wilcoxon validation use the same 50 CV scores (circular). True resolution would require nested CV or a separate hold-out.
+
+### Section 15 — Streaming Wearable Inference Simulation
+Simulated a continuous stream of 200 consecutive noisy sensor readings. Compared three approaches:
+
+| Method | Description | Effect |
+|--------|-------------|--------|
+| Raw | Every reading triggers an independent prediction | High spurious alarm rate |
+| **EWMA** | Exponential Weighted Moving Average smoothing | Absorbs short spikes, reduces alarm fatigue |
+| Rolling Window | Fixed-window majority vote | Buffers alerts until risk is sustained |
+
+Addresses **alarm fatigue** — a documented clinical problem where excessive false alarms cause staff to ignore real emergencies.
+
+### Section 16 — SHAP Explainability
+- **Global feature importance:** which features matter most across all patients
+- **Individual waterfall plots:** why the model flagged a specific patient
+- Applied to the selected best model only
+- Required for regulatory transparency and clinical trust
+
+### Section 17 — Study Limitations
+| Limitation | Mitigation |
+|-----------|-----------|
+| Dataset 1 may be synthetic/semi-simulated | External validation on real-world Dataset 2 added |
+| Only 3 vital signs (no lab results, history, symptoms) | Intentional — tests what wearables alone can achieve |
+| No time-series modelling | EWMA streaming simulation partially addresses this |
+| Class imbalance (~59/41) | Stratified splits + recall as priority metric |
+| Winner's Curse in significance testing | Holm-Bonferroni applied; limitation explicitly acknowledged |
+
+### Section 18 — Model Saving
+Four artefacts saved to `results/`:
+
+| File | Purpose |
+|------|---------|
+| `health_risk_model.joblib` | Trained model (XGBoost) |
+| `health_risk_scaler.joblib` | StandardScaler — **must apply before inference** |
+| `health_risk_label_encoder.joblib` | Converts 0/1 output → "High Risk" / "Low Risk" |
+| `model_metadata.json` | Audit trail, data sources, performance metrics |
+
+---
+
+## 📊 Key Performance Numbers (Best Model — XGBoost)
+
+| Metric | Value | Context |
+|--------|-------|---------|
+| Clean Test AUC | **0.717** | Dataset 1, 20% held-out |
+| Clean Test Recall | **0.4306** | High Risk patients caught at default threshold |
+| Noisy Recall | **0.4754** | Under correlated sensor noise |
+| External AUC (DS2) | **0.6975** | Different hospital/device protocol |
+| External Recall (DS2) | **0.7183** | Generalisation to unseen domain |
+| CV AUC Mean ± Std | **0.7144 ± 0.0025** | 50-round repeated stratified K-fold |
+| Clinical Threshold | **0.5380** | Youden's J (OOF-tuned) |
+
+---
+
+## 🔁 How to Re-Run Inference
+
+```python
+import joblib, numpy as np
+
+scaler = joblib.load('results/health_risk_scaler.joblib')
+model  = joblib.load('results/health_risk_model.joblib')
+le     = joblib.load('results/health_risk_label_encoder.joblib')
+
+# Input order: [BPM, Temperature, SpO2, temp_deviation, hr_spo2_ratio]
+raw = np.array([[88, 37.8, 96, abs(37.8 - 37.0), 88 / 96]])
+X   = scaler.transform(raw)
+
+prob_high_risk = model.predict_proba(X)[0][0]   # index 0 = "High Risk" class
+label = le.inverse_transform([model.predict(X)[0]])[0]
+print(f"{label}  (confidence: {prob_high_risk:.1%})")
+```
+
+---
+
+## 🔑 Key Design Decisions (for Reviewers)
+
+1. **No dataset merging** — Datasets kept completely separate; no blending allowed.
+2. **No model ensembling** — 5 single learners only; per clinical protocol.
+3. **Tautology-free labels** — Dataset 2 alert flags never used in training.
+4. **Leakage-free calibration** — Scaler and calibrator fitted on training fold only.
+5. **OOF threshold tuning** — Youden's J computed on out-of-fold predictions, not test set.
+6. **Correlated noise** — Motion/fever events affect all sensors simultaneously (physically realistic).
+7. **Column-wise median imputation** — Cross-sectional standard; not time-series interpolation.
+8. **`GLOBAL_SEED = 42` everywhere** — All `random_state` / `random_seed` parameters locked.

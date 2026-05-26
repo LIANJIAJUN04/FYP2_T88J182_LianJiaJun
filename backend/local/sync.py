@@ -42,6 +42,7 @@ def enqueue_reading(
     temperature: float,
     status: str,
     prediction: str,
+    confidence: float,
     alert: bool,
     ts,
 ) -> None:
@@ -52,6 +53,7 @@ def enqueue_reading(
         .field("temperature", float(temperature))
         .field("status", status)
         .field("prediction", prediction)
+        .field("confidence", float(confidence))
         .field("alert", alert)
         .time(ts, WritePrecision.NS)
     )
