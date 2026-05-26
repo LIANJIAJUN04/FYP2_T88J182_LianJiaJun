@@ -496,7 +496,7 @@ export default function PatientDetailPage() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                      {["Metric", "Value", "Triggered", "Status"].map((h) => (
+                      {["Metric", "Value", "Started", "Ended", "Status"].map((h) => (
                         <th
                           key={h}
                           className="px-5 py-2 text-left font-semibold uppercase tracking-wider"
@@ -521,8 +521,23 @@ export default function PatientDetailPage() {
                         <td className="px-5 py-3 font-bold tabular-nums" style={{ color: "#ffb4ab" }}>
                           {typeof a.value === "number" ? a.value.toFixed(1) : a.value}
                         </td>
+                        {/* Started — when the alert was first triggered */}
                         <td className="px-5 py-3" style={{ color: "#909097" }}>
                           {formatDt(a.triggered_at)}
+                        </td>
+                        {/* Ended — resolved_at timestamp, or a pulsing dot if still active */}
+                        <td className="px-5 py-3">
+                          {a.resolved_at ? (
+                            <span style={{ color: "#4ade80" }}>{formatDt(a.resolved_at)}</span>
+                          ) : (
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                                style={{ background: "#ffb4ab" }}
+                              />
+                              <span style={{ color: "#ffb4ab" }}>Ongoing</span>
+                            </span>
+                          )}
                         </td>
                         <td className="px-5 py-3">
                           {a.resolved_at ? (

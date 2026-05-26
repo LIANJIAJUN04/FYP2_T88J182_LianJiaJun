@@ -141,6 +141,21 @@ export default function DashboardPage() {
 
         {/* Right controls */}
         <div className="flex items-center gap-3">
+          {/* Unresolved alert badge */}
+          {!loading && unresolvedAlerts > 0 && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold animate-pulse"
+              style={{
+                background: "rgba(239,68,68,0.12)",
+                border: "1px solid rgba(239,68,68,0.35)",
+                color: "#f87171",
+              }}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              {unresolvedAlerts} alert{unresolvedAlerts !== 1 ? "s" : ""}
+            </div>
+          )}
+
           <button
             onClick={() => loadData(true)}
             disabled={refreshing}

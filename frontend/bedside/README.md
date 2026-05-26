@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bedside Frontend
 
-## Getting Started
+Next.js app running on the bedside machine at `localhost:3001`. Used by nurses to register/login patients and monitor them in real time.
 
-First, run the development server:
+## Requirements
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Node.js 18+
+- `.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Running
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev          # dev server on :3001
+npm run build && npm start   # production
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Or use the one-command startup from the repo root:
 
-## Learn More
+```bash
+./start-bedside.sh
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Pages
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Route | Description |
+|---|---|
+| `/` | Index — New Patient or Existing Patient |
+| `/register` | New patient registration form |
+| `/login` | Existing patient — IC number + nurse password |
+| `/dashboard` | Live monitoring — StatusCard + GaugeCards + LiveChart |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+`proxy.ts` blocks direct access to `/dashboard` — redirects to `/` if no active patient.
 
-## Deploy on Vercel
+## Key Components
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Component | Description |
+|---|---|
+| `StatusCard` | Prominent status indicator — NORMAL / WARNING / DANGER, pulses red on danger |
+| `GaugeCard` | SVG arc gauge for SpO₂, BPM, and Temperature |
+| `LiveChart` | Recharts scrolling time-series (last 60 readings), tab per metric |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+All components connect via SSE (`GET /api/stream`). Auto-reconnects after 3 s on network error.
+
+## Notes
+
+- Runs on port **3001** (3000 is reserved by another project on this machine).
+- Auth is a shared nurse password validated by the local backend — no per-nurse accounts.
+- Patient state is in-memory on the backend; restarting FastAPI clears it.

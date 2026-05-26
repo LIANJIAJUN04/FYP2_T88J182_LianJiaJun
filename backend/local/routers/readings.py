@@ -6,8 +6,10 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from database import write_reading
+from limiter import limiter
 from ml.predict import run_inference
 from status import get_status
+from supabase_client import upsert_alert, resolve_alerts_for_patient
 from sync import enqueue_reading
 
 router = APIRouter()
@@ -23,6 +25,7 @@ class ReadingIn(BaseModel):
 
 
 @router.post("/api/readings")
+@limiter.limit("5/second")
 async def receive_reading(body: ReadingIn, request: Request):
     secret = request.headers.get("X-Device-Secret", "")
     if secret != _device_secret:
@@ -46,10 +49,66 @@ async def receive_reading(body: ReadingIn, request: Request):
     prediction: str = ml_result["prediction"]
     confidence: float = ml_result["confidence"]
 
+    # Safety override: extreme values (e.g. temp 30°C) are out-of-distribution
+    # for the ML model — it was trained on in-range vitals and cannot reliably
+    # classify severe hypothermia/bradycardia/hypoxia.  When the rule-based
+    # engine already declares DANGER, the ML badge must agree — showing "NORMAL"
+    # alongside a DANGER status is clinically misleading.
+    if health_status == "danger" and prediction == "normal":
+        prediction = "anomaly"
+        confidence = round(1.0 - confidence, 4)  # flip to P(anomaly)
+
     # alert = danger threshold breached OR ML flagged an anomaly
     alert = health_status == "danger" or prediction == "anomaly"
 
     ts = datetime.now(timezone.utc)
+
+    # ── Write Supabase alert rows (session-style — one row per event, not per second) ──
+    if alert:
+        alert_writes: list = []
+
+        if health_status == "danger":
+            # One alert per metric that crossed a danger threshold.
+            # upsert_alert skips the insert if an unresolved alert already exists
+            # for the same patient + metric, so this never floods the table.
+            if body.spo2 is not None and body.spo2 < 90:
+                alert_writes.append(
+                    asyncio.to_thread(upsert_alert, patient_id, "spo2", body.spo2)
+                )
+            if body.bpm < 40 or body.bpm > 130:
+                alert_writes.append(
+                    asyncio.to_thread(upsert_alert, patient_id, "bpm", float(body.bpm))
+                )
+            if body.temperature > 38 or body.temperature < 35:
+                alert_writes.append(
+                    asyncio.to_thread(upsert_alert, patient_id, "temperature", body.temperature)
+                )
+
+        else:
+            # ML-only anomaly — log the metric furthest from its normal midpoint
+            deviations: dict[str, float] = {
+                "bpm": abs(body.bpm - 80) / 20.0,
+                "temperature": abs(body.temperature - 36.65) / 0.55,
+            }
+            if body.spo2 is not None:
+                deviations["spo2"] = (97.5 - body.spo2) / 2.5
+
+            worst = max(deviations, key=deviations.get)
+            worst_value = {
+                "spo2": body.spo2,
+                "bpm": float(body.bpm),
+                "temperature": body.temperature,
+            }[worst]
+            alert_writes.append(
+                asyncio.to_thread(upsert_alert, patient_id, worst, worst_value)
+            )
+
+        if alert_writes:
+            await asyncio.gather(*alert_writes)
+
+    else:
+        # Reading is safe — close any open alerts so resolved_at is stamped
+        await asyncio.to_thread(resolve_alerts_for_patient, patient_id)
 
     # ── Persist locally ────────────────────────────────────────────────────
     await asyncio.to_thread(
