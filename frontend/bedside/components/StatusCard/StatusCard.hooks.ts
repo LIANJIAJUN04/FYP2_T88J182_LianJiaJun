@@ -9,6 +9,7 @@ export interface StreamReading {
   bpm: number;
   temperature: number;
   status: Status;
+  /** ML model prediction: "normal" | "anomaly" */
   prediction: string;
   confidence: number;
   alert: boolean;

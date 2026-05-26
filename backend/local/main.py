@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -45,8 +46,14 @@ app.include_router(stream.router)
 async def startup():
     app.state.ml_model = await asyncio.to_thread(load_model)
     asyncio.create_task(cloud_sync_worker())
+    # Load ML model in a thread so the event loop isn't blocked
+    app.state.ml_model = await asyncio.to_thread(load_model)
+    if app.state.ml_model:
+        logger.info("[main] ML model loaded — anomaly detection active")
+    else:
+        logger.warning("[main] ML model not loaded — predictions default to 'normal'")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "ml_loaded": app.state.ml_model is not None}

@@ -3,7 +3,6 @@ import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from database import write_reading
@@ -36,6 +35,7 @@ async def receive_reading(body: ReadingIn, request: Request):
     if not patient_id:
         raise HTTPException(status_code=400, detail="No active patient")
 
+    # ── Rule-based status ──────────────────────────────────────────────────
     health_status = get_status(body.spo2, body.bpm, body.temperature)
 
     # ── ML anomaly detection ───────────────────────────────────────────────
@@ -123,6 +123,7 @@ async def receive_reading(body: ReadingIn, request: Request):
         alert=alert,
     )
 
+    # ── Enqueue cloud sync ─────────────────────────────────────────────────
     enqueue_reading(
         patient_id=patient_id,
         spo2=body.spo2,
@@ -135,6 +136,7 @@ async def receive_reading(body: ReadingIn, request: Request):
         ts=ts,
     )
 
+    # ── Update in-memory SSE state ─────────────────────────────────────────
     request.app.state.last_reading = {
         "spo2": body.spo2,
         "bpm": body.bpm,
