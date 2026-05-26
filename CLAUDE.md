@@ -839,14 +839,16 @@ Note: `StatusCard` (rule-based) is already live from Phase 4. ML `AlertBadge` is
 
 ---
 
-### Phase 10 — Polish & Hardening
-- [ ] Persist sync queue to local SQLite — survive server restarts
-- [ ] Frontend SSE auto-reconnect after 3s
-- [ ] Alert writes to Supabase `alerts` table when status = danger
-- [ ] Admin dashboard shows unresolved alert count in nav
-- [ ] Add `/health` endpoint to both FastAPI instances
-- [ ] Rate limiting on local API (5 req/s)
-- [ ] README in each subfolder
+### Phase 10 — Polish & Hardening ✅
+- [x] Persist sync queue to local SQLite — survive server restarts (`sync.py` — `pending_sync` table, crash-recovery on startup)
+- [x] Frontend SSE auto-reconnect after 3s (both bedside and admin `StatusCard.hooks.ts`)
+- [x] Alert writes to Supabase `alerts` table when status = danger or ML prediction = anomaly
+- [x] Admin dashboard shows unresolved alert count in nav (pulsing red badge, hides when zero)
+- [x] Add `/health` endpoint to both FastAPI instances
+- [x] Rate limiting on local API (5 req/s) — `slowapi`, applied to `POST /api/readings`
+- [x] README in each subfolder (`firmware/`, `backend/local/`, `backend/cloud/`, `frontend/bedside/`, `frontend/admin/`, `ml/`)
+
+**Completed:** 2026-05-26 — SQLite persistence via `sync_queue.db` with crash-recovery; `slowapi` rate limiter on readings endpoint; alert count badge in admin navbar (pulsing red, hidden when zero); project-level READMEs for all subfolders.
 
 ---
 

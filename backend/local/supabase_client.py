@@ -50,3 +50,12 @@ def close_active_session(patient_id: str) -> None:
         .eq("patient_id", patient_id) \
         .is_("ended_at", "null") \
         .execute()
+
+
+def insert_alert(patient_id: str, metric: str, value: float) -> None:
+    """Write one row to the Supabase alerts table."""
+    client.table("alerts").insert({
+        "patient_id": patient_id,
+        "metric": metric,
+        "value": value,
+    }).execute()
