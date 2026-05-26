@@ -9,7 +9,10 @@ export interface StreamReading {
   bpm: number;
   temperature: number;
   status: Status;
+  /** ML model prediction: "normal" | "anomaly" */
   prediction: string;
+  /** Confidence of the predicted ML class (0–1). Added in Phase 9. */
+  confidence?: number;
   alert: boolean;
   ts: string;
 }
