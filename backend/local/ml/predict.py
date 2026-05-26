@@ -24,13 +24,14 @@ from typing import Any
 
 import joblib
 import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 # Resolve <project_root>/ML relative to this file's location
 # predict.py is at:  backend/local/ml/predict.py
 # project root:      ../../../../  (4 levels up)
-_ML_DIR = Path(__file__).resolve().parent.parent.parent.parent / "ML"
+_ML_DIR = Path(__file__).resolve().parent.parent.parent.parent / "ml"
 
 _THRESHOLD: float = 0.5380  # Youden's J (from model_metadata.json — Section 11)
 
@@ -96,10 +97,10 @@ def run_inference(
         temp_deviation = abs(float(temperature) - 37.0)
         hr_spo2_ratio = float(bpm) / max(float(spo2), 0.001)  # guard ÷0
 
-        # Shape: (1, 5) — feature order matches training exactly
-        X_raw = np.array(
+        # Shape: (1, 5) — named columns must match what the scaler was fitted on
+        X_raw = pd.DataFrame(
             [[float(bpm), float(temperature), float(spo2), temp_deviation, hr_spo2_ratio]],
-            dtype=np.float64,
+            columns=_FEATURE_NAMES,
         )
         X_scaled = artefacts["scaler"].transform(X_raw)
 

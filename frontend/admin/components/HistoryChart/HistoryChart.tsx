@@ -146,7 +146,7 @@ export function HistoryChart({ readings, loading, from, to, onFromChange, onToCh
             </p>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={240}>
             <LineChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(69,70,77,0.4)" strokeOpacity={0.5} />
               <XAxis

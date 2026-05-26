@@ -11,8 +11,7 @@ export interface StreamReading {
   status: Status;
   /** ML model prediction: "normal" | "anomaly" */
   prediction: string;
-  /** Confidence of the predicted ML class (0–1). Added in Phase 9. */
-  confidence?: number;
+  confidence: number;
   alert: boolean;
   ts: string;
 }

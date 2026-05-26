@@ -144,17 +144,19 @@ export default function DashboardPage() {
           />
         </motion.div>
 
-        {/* ML AlertBadge — anomaly detection (Phase 9) */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.18 }}
-        >
-          <AlertBadge
-            prediction={(latest?.prediction ?? "normal") as MLPrediction}
-            confidence={latest?.confidence}
-          />
-        </motion.div>
+        {/* ML Alert Badge */}
+        {latest && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.18 }}
+          >
+            <AlertBadge
+              prediction={latest.prediction}
+              confidence={latest.confidence ?? 0}
+            />
+          </motion.div>
+        )}
 
         {/* Gauge Cards */}
         <motion.div
