@@ -51,10 +51,13 @@ MediSync/
 │   │   ├── database.py     # Local InfluxDB write client
 │   │   ├── supabase_client.py  # Patient + session ops
 │   │   ├── sync.py         # Async queue + cloud sync worker
+│   │   ├── ml/
+│   │   │   ├── predict.py  # load_model() + run_inference() — XGBoost anomaly detection
+│   │   │   └── __init__.py
 │   │   ├── routers/
 │   │   │   ├── patients.py # POST /api/patients
 │   │   │   ├── session.py  # login / logout / active
-│   │   │   ├── readings.py # POST /api/readings
+│   │   │   ├── readings.py # POST /api/readings (runs ML inference)
 │   │   │   └── stream.py   # GET /api/stream (SSE)
 │   │   └── requirements.txt
 │   └── cloud/              # FastAPI — Railway (localhost:8001 for dev)
@@ -75,7 +78,14 @@ MediSync/
 ├── frontend/
 │   ├── bedside/            # Next.js — localhost
 │   └── admin/              # Next.js — Vercel
-├── ml/                     # Anomaly detection notebooks + data
+├── ML/                     # Anomaly detection training pipeline
+│   ├── health_risk_ml.ipynb           # 18-section training notebook (XGBoost, LightGBM, CatBoost, MLP, RF)
+│   ├── health_risk_model.joblib       # Saved XGBoost model (gitignored)
+│   ├── health_risk_scaler.joblib      # StandardScaler (fit on train set only, gitignored)
+│   ├── health_risk_label_encoder.joblib  # LabelEncoder — High Risk / Low Risk (gitignored)
+│   ├── model_metadata.json            # Audit trail + performance numbers
+│   ├── ml.md                          # Pipeline documentation
+│   └── raw/                           # Training datasets (gitignored)
 ├── supabase/
 │   └── migrations/         # SQL migration files (run in Supabase SQL editor)
 ├── docker-compose.yml      # Local InfluxDB
@@ -117,6 +127,29 @@ API endpoint: `GET /api/patients/:id/summary?range=1h|6h|24h|7d` (auth required,
 
 ---
 
+## ML Anomaly Detection
+
+The local backend runs an XGBoost classifier on every reading to detect subtle physiological patterns that fall within technically normal thresholds — the kind rule-based alerts miss.
+
+| | Rule-based (StatusCard) | ML (AlertBadge / MLBadge) |
+|---|---|---|
+| Signal | Known dangerous thresholds | Learned patterns from 200k+ readings |
+| Example caught | SpO₂ = 88% → DANGER | SpO₂ fluctuating abnormally fast at 95% |
+| Frontend | StatusCard (green / amber / red) | AlertBadge (bedside) · MLBadge (admin) |
+| Fallback | Always available | Defaults to "normal" if model not loaded |
+
+**Model:** XGBoost, trained on `human_vital_signs_dataset_2024.csv` (200,020 rows), validated externally on a separate hospital dataset (domain-shift test).
+
+**Features:** `BPM`, `Temperature`, `SpO₂`, `temp_deviation` (`|temp − 37.0|`), `hr_spo2_ratio` (`BPM ÷ SpO₂`)
+
+**Clinical threshold:** 0.5380 (Youden's J, out-of-fold tuned — no test-set leakage)
+
+**Key metrics:** CV AUC 0.7144 ± 0.0025 (50-round repeated stratified K-fold) · External AUC 0.6975
+
+Artefacts live in `ML/` and are loaded once at FastAPI startup into `app.state.ml_model`. If the `.joblib` files are missing, the server starts normally and predictions default to `"normal"`.
+
+---
+
 ## Status Logic
 
 Rule-based, computed on every reading:
@@ -140,10 +173,15 @@ Danger state pulses red on the StatusCard. A separate ML anomaly detection layer
   "temperature": 36.6,
   "status": "normal",
   "prediction": "normal",
+  "confidence": 0.6096,
   "alert": false,
   "ts": "2025-05-06T10:00:01Z"
 }
 ```
+
+`status` — rule-based threshold result: `"normal"` / `"warning"` / `"danger"` (drives **StatusCard**).  
+`prediction` — ML anomaly detection result: `"normal"` / `"anomaly"` (drives **AlertBadge** / **MLBadge**).  
+`confidence` — probability of the predicted ML class (0–1). `0.0` when model is not loaded.
 
 ---
 
@@ -276,14 +314,14 @@ See `CLAUDE.md` for the full variable reference.
 | 7 | Admin frontend | ✅ Done |
 | 8 | ESP32 firmware | ✅ Done |
 | 8.5 | Claude API AI Health Summary | ✅ Done |
-| 9 | ML anomaly detection | Pending |
+| 9 | ML anomaly detection | ✅ Done |
 | 10 | Polish & hardening | Pending |
 
 ---
 
 ## Notes
 
-- `model.pkl` is gitignored — retrain locally after cloning
+- `ML/*.joblib` artefacts are gitignored — re-run `ML/health_risk_ml.ipynb` to regenerate them after cloning
 - `app.state.active_patient_id` is in-memory — restarting local FastAPI requires the nurse to log in again
 - `status.py` is duplicated in local and cloud backends — keep them in sync
 - ESP32 sends readings over USB Serial to `serial_bridge.py`, not directly via WiFi/HTTP

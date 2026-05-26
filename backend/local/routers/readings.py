@@ -3,10 +3,10 @@ import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from database import write_reading
+from ml.predict import run_inference
 from status import get_status
 from sync import enqueue_reading
 
@@ -32,12 +32,26 @@ async def receive_reading(body: ReadingIn, request: Request):
     if not patient_id:
         raise HTTPException(status_code=400, detail="No active patient")
 
+    # ── Rule-based status ──────────────────────────────────────────────────
     health_status = get_status(body.spo2, body.bpm, body.temperature)
-    prediction = "normal"
-    alert = health_status == "danger"
+
+    # ── ML anomaly detection ───────────────────────────────────────────────
+    ml_result = await asyncio.to_thread(
+        run_inference,
+        request.app.state.ml_model,
+        body.bpm,
+        body.temperature,
+        body.spo2,
+    )
+    prediction: str = ml_result["prediction"]
+    confidence: float = ml_result["confidence"]
+
+    # alert = danger threshold breached OR ML flagged an anomaly
+    alert = health_status == "danger" or prediction == "anomaly"
 
     ts = datetime.now(timezone.utc)
 
+    # ── Persist locally ────────────────────────────────────────────────────
     await asyncio.to_thread(
         write_reading,
         patient_id=patient_id,
@@ -46,9 +60,11 @@ async def receive_reading(body: ReadingIn, request: Request):
         temperature=body.temperature,
         status=health_status,
         prediction=prediction,
+        confidence=confidence,
         alert=alert,
     )
 
+    # ── Enqueue cloud sync ─────────────────────────────────────────────────
     enqueue_reading(
         patient_id=patient_id,
         spo2=body.spo2,
@@ -56,16 +72,19 @@ async def receive_reading(body: ReadingIn, request: Request):
         temperature=body.temperature,
         status=health_status,
         prediction=prediction,
+        confidence=confidence,
         alert=alert,
         ts=ts,
     )
 
+    # ── Update in-memory SSE state ─────────────────────────────────────────
     request.app.state.last_reading = {
         "spo2": body.spo2,
         "bpm": body.bpm,
         "temperature": body.temperature,
         "status": health_status,
         "prediction": prediction,
+        "confidence": confidence,
         "alert": alert,
         "ts": ts.isoformat(),
     }
@@ -74,5 +93,6 @@ async def receive_reading(body: ReadingIn, request: Request):
         "status": "ok",
         "health_status": health_status,
         "prediction": prediction,
+        "confidence": confidence,
         "alert": alert,
     }
