@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Activity, LogOut, Wifi, WifiOff, Droplets, HeartPulse, Thermometer } from "lucide-react";
 import { StatusCard } from "@/components/StatusCard/StatusCard";
+import { AlertBadge } from "@/components/AlertBadge/AlertBadge";
 import { GaugeCard } from "@/components/GaugeCard/GaugeCard";
 import { LiveChart } from "@/components/LiveChart/LiveChart";
 import { useSSEStream } from "@/components/StatusCard/StatusCard.hooks";
@@ -141,6 +142,20 @@ export default function DashboardPage() {
             lastUpdate={latest ? formatTime(latest.ts) : undefined}
           />
         </motion.div>
+
+        {/* ML Alert Badge */}
+        {latest && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.18 }}
+          >
+            <AlertBadge
+              prediction={latest.prediction}
+              confidence={latest.confidence ?? 0}
+            />
+          </motion.div>
+        )}
 
         {/* Gauge Cards */}
         <motion.div

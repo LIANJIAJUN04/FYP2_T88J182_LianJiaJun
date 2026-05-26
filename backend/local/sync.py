@@ -94,6 +94,7 @@ def _payload_to_point(p: dict) -> Point:
         .field("temperature", float(p["temperature"]))
         .field("status", p["status"])
         .field("prediction", p["prediction"])
+        .field("confidence", float(p.get("confidence", 0.0)))
         .field("alert", bool(p["alert"]))
         .time(p["ts"], WritePrecision.NS)
     )
@@ -147,6 +148,7 @@ def enqueue_reading(
     temperature: float,
     status: str,
     prediction: str,
+    confidence: float,
     alert: bool,
     ts,
 ) -> None:
@@ -158,6 +160,7 @@ def enqueue_reading(
         "temperature": float(temperature),
         "status": status,
         "prediction": prediction,
+        "confidence": float(confidence),
         "alert": bool(alert),
         "ts": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
     }

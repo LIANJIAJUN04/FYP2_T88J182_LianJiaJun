@@ -136,10 +136,22 @@ Danger state pulses red on the StatusCard. A separate ML anomaly detection layer
 An XGBoost classifier (Phase 9) runs alongside the rule-based engine on every reading. It detects subtle stress patterns that fall within normal thresholds — e.g. SpO₂ fluctuating abnormally fast at 95%.
 
 - **Model:** XGBoost, trained on `human_vital_signs_dataset_2024.csv` (200 k rows)
-- **Features:** BPM, Temperature, SpO₂, `temp_deviation`, `hr_spo2_ratio`
+- **Features:** BPM, Temperature, SpO₂, `temp_deviation`, `hr_spo2_ratio` (static per reading — no rolling window)
 - **Threshold:** 0.5380 (Youden's J, OOF-tuned — no test leakage)
-- **Artefacts:** `ML/health_risk_model.joblib`, `ML/health_risk_scaler.joblib`, `ML/health_risk_label_encoder.joblib`
+- **Artefacts:** `ml/health_risk_model.joblib`, `ml/health_risk_scaler.joblib`, `ml/health_risk_label_encoder.joblib`
 - **Graceful degradation:** if artefacts are missing, `prediction` defaults to `"normal"` and `confidence` to `0.0`
+
+### OOD Safety Override
+
+The model was trained on in-range vitals and cannot reliably classify extreme out-of-distribution values (e.g. temperature 30°C / severe hypothermia, SpO₂ < 90%). To prevent the ML badge showing **NORMAL** alongside a rule-based **DANGER** — which is clinically misleading — `readings.py` applies this guard after inference:
+
+```python
+if health_status == "danger" and prediction == "normal":
+    prediction = "anomaly"
+    confidence = round(1.0 - confidence, 4)  # flip to P(anomaly)
+```
+
+The rule-based engine owns extreme thresholds; the ML layer owns subtle within-normal patterns. They are additive, never contradictory.
 
 When `alert = true` (danger status **or** ML anomaly), a row is written to the Supabase `alerts` table in real time so the admin dashboard alert log stays current.
 
@@ -301,7 +313,7 @@ See `CLAUDE.md` for the full variable reference.
 
 ## Notes
 
-- ML artefacts (`ML/*.joblib`) are gitignored — retrain locally after cloning using `ML/health_risk_ml.ipynb`
+- ML artefacts (`ml/*.joblib`) are gitignored — retrain locally after cloning by re-running `ml/health_risk_ml.ipynb`
 - `app.state.active_patient_id` is in-memory — restarting local FastAPI requires the nurse to log in again
 - `status.py` is duplicated in local and cloud backends — keep them in sync
 - ESP32 sends readings over USB Serial to `serial_bridge.py`, not directly via WiFi/HTTP

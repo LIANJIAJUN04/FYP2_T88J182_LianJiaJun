@@ -72,7 +72,7 @@ export function LiveChart({ readings }: LiveChartProps) {
             <p className="text-sm" style={{ color: "#45464d" }}>Waiting for readings…</p>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={200}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(69,70,77,0.4)" strokeOpacity={1} />
               <XAxis

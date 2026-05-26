@@ -24,6 +24,7 @@ def write_reading(
     temperature: float,
     status: str,
     prediction: str = "normal",
+    confidence: float = 0.0,
     alert: bool = False,
 ) -> None:
     point = (
@@ -33,6 +34,7 @@ def write_reading(
         .field("temperature", float(temperature))
         .field("status", status)
         .field("prediction", prediction)
+        .field("confidence", float(confidence))
         .field("alert", alert)
         .time(datetime.now(timezone.utc), WritePrecision.NS)
     )
