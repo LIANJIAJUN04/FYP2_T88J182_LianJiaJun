@@ -13,12 +13,14 @@ import { getSupabase } from "@/lib/supabase";
 import { getToken, clearToken } from "@/lib/auth";
 import { fetchPatient, fetchSessions, fetchAlerts, fetchHistory } from "@/lib/api";
 import { StatusCard } from "@/components/StatusCard/StatusCard";
+import { MLBadge } from "@/components/MLBadge/MLBadge";
 import { GaugeCard } from "@/components/GaugeCard/GaugeCard";
 import { LiveChart } from "@/components/LiveChart/LiveChart";
 import { HistoryChart } from "@/components/HistoryChart/HistoryChart";
 import { AISummaryPanel } from "@/components/AISummaryPanel/AISummaryPanel";
 import { useCloudSSEStream } from "@/components/StatusCard/StatusCard.hooks";
 import type { Patient, Session, Alert, Reading } from "@/lib/api";
+import type { MLPrediction } from "@/components/MLBadge/MLBadge.types";
 
 function formatDt(ts: string) {
   return new Date(ts).toLocaleString("en-GB", {
@@ -291,18 +293,22 @@ export default function PatientDetailPage() {
           </motion.div>
         )}
 
-        {/* Status + gauges row */}
+        {/* Status + ML badge + gauges row */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
           className="grid grid-cols-1 lg:grid-cols-4 gap-4"
         >
-          {/* Status card (spans 1 column wide, full height) */}
-          <div className="lg:col-span-1 flex flex-col">
+          {/* Left column: StatusCard + MLBadge stacked */}
+          <div className="lg:col-span-1 flex flex-col gap-4">
             <StatusCard
               status={status}
               lastUpdate={latest ? formatTime(latest.ts) : undefined}
+            />
+            <MLBadge
+              prediction={(latest?.prediction ?? "normal") as MLPrediction}
+              confidence={latest?.confidence}
             />
           </div>
 

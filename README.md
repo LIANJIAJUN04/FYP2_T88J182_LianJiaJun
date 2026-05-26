@@ -51,10 +51,13 @@ MediSync/
 │   │   ├── database.py     # Local InfluxDB write client
 │   │   ├── supabase_client.py  # Patient + session ops
 │   │   ├── sync.py         # Async queue + cloud sync worker
+│   │   ├── ml/
+│   │   │   ├── predict.py  # load_model() + run_inference() — XGBoost anomaly detection
+│   │   │   └── __init__.py
 │   │   ├── routers/
 │   │   │   ├── patients.py # POST /api/patients
 │   │   │   ├── session.py  # login / logout / active
-│   │   │   ├── readings.py # POST /api/readings
+│   │   │   ├── readings.py # POST /api/readings (runs ML inference)
 │   │   │   └── stream.py   # GET /api/stream (SSE)
 │   │   └── requirements.txt
 │   └── cloud/              # FastAPI — Railway (localhost:8001 for dev)
@@ -75,7 +78,14 @@ MediSync/
 ├── frontend/
 │   ├── bedside/            # Next.js — localhost
 │   └── admin/              # Next.js — Vercel
-├── ml/                     # Anomaly detection notebooks + data
+├── ML/                     # Anomaly detection training pipeline
+│   ├── health_risk_ml.ipynb           # 18-section training notebook (XGBoost, LightGBM, CatBoost, MLP, RF)
+│   ├── health_risk_model.joblib       # Saved XGBoost model (gitignored)
+│   ├── health_risk_scaler.joblib      # StandardScaler (fit on train set only, gitignored)
+│   ├── health_risk_label_encoder.joblib  # LabelEncoder — High Risk / Low Risk (gitignored)
+│   ├── model_metadata.json            # Audit trail + performance numbers
+│   ├── ml.md                          # Pipeline documentation
+│   └── raw/                           # Training datasets (gitignored)
 ├── supabase/
 │   └── migrations/         # SQL migration files (run in Supabase SQL editor)
 ├── docker-compose.yml      # Local InfluxDB
@@ -114,6 +124,29 @@ The admin patient detail page includes an on-demand **AI Health Summary** powere
 Pre-computed per-metric stats (min/max/avg, warning/danger reading counts) are sent to the model rather than raw data. The summary includes a disclaimer that it is AI-generated and not a substitute for clinical judgment.
 
 API endpoint: `GET /api/patients/:id/summary?range=1h|6h|24h|7d` (auth required, returns 422 if fewer than 2 readings in the window).
+
+---
+
+## ML Anomaly Detection
+
+The local backend runs an XGBoost classifier on every reading to detect subtle physiological patterns that fall within technically normal thresholds — the kind rule-based alerts miss.
+
+| | Rule-based (StatusCard) | ML (AlertBadge / MLBadge) |
+|---|---|---|
+| Signal | Known dangerous thresholds | Learned patterns from 200k+ readings |
+| Example caught | SpO₂ = 88% → DANGER | SpO₂ fluctuating abnormally fast at 95% |
+| Frontend | StatusCard (green / amber / red) | AlertBadge (bedside) · MLBadge (admin) |
+| Fallback | Always available | Defaults to "normal" if model not loaded |
+
+**Model:** XGBoost, trained on `human_vital_signs_dataset_2024.csv` (200,020 rows), validated externally on a separate hospital dataset (domain-shift test).
+
+**Features:** `BPM`, `Temperature`, `SpO₂`, `temp_deviation` (`|temp − 37.0|`), `hr_spo2_ratio` (`BPM ÷ SpO₂`)
+
+**Clinical threshold:** 0.5380 (Youden's J, out-of-fold tuned — no test-set leakage)
+
+**Key metrics:** CV AUC 0.7144 ± 0.0025 (50-round repeated stratified K-fold) · External AUC 0.6975
+
+Artefacts live in `ML/` and are loaded once at FastAPI startup into `app.state.ml_model`. If the `.joblib` files are missing, the server starts normally and predictions default to `"normal"`.
 
 ---
 

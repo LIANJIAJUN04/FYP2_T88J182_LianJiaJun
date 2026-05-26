@@ -9,6 +9,7 @@ import { AlertBadge } from "@/components/AlertBadge/AlertBadge";
 import { GaugeCard } from "@/components/GaugeCard/GaugeCard";
 import { LiveChart } from "@/components/LiveChart/LiveChart";
 import { useSSEStream } from "@/components/StatusCard/StatusCard.hooks";
+import type { MLPrediction } from "@/components/AlertBadge/AlertBadge.types";
 import { getActivePatient, sessionLogout } from "@/lib/api";
 
 interface Patient {
