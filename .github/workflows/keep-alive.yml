@@ -1,0 +1,22 @@
+name: Keep Services Alive
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # every 6 hours — prevents Supabase 7-day inactivity pause
+  workflow_dispatch:         # allow manual trigger from GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Railway (Cloud Backend)
+        run: |
+          curl -sf https://medisync-cloud-api-production.up.railway.app/health \
+            && echo "Railway: OK" || echo "Railway: unreachable"
+
+      - name: Ping Supabase (REST API)
+        run: |
+          curl -sf \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "https://rzzxrlfgmkdoarglcpdw.supabase.co/rest/v1/patients?select=id&limit=1" \
+            && echo "Supabase: OK" || echo "Supabase: unreachable"

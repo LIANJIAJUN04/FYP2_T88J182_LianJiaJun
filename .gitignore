@@ -15,10 +15,11 @@ build/
 .env.local
 .env.*.local
 
-# ML model (retrain locally)
+# ML model artefacts (retrain locally)
 backend/local/ml/model.pkl
 backend/cloud/ml/model.pkl
 ml/data/*.csv
+ml/results/
 
 # Node / Next.js
 node_modules/
@@ -41,3 +42,7 @@ influxdb_data/
 
 # Logs
 *.log
+
+# Local planning notes (not for repo)
+fyp_todo.md
+github_files_todo.md
