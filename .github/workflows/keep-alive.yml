@@ -2,7 +2,7 @@ name: Keep Services Alive
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # every 6 hours — prevents Supabase 7-day inactivity pause
+    - cron: '0 12 * * *'  # once a day at noon UTC — prevents Supabase 7-day inactivity pause
   workflow_dispatch:         # allow manual trigger from GitHub Actions tab
 
 jobs:
