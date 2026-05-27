@@ -2,9 +2,9 @@
 ML inference module for health-risk classification.
 
 Model  : XGBoost (trained in ML/health_risk_ml.ipynb)
-Artefacts live at: <project_root>/ML/
+Artefacts live at: <project_root>/ml/
 
-Feature order (must match training — see ML/ml.md Section 6):
+Feature order (must match training — see ml/ml.md Section 6):
   [BPM, Temperature, SpO2, temp_deviation, hr_spo2_ratio]
 
   temp_deviation = abs(temperature - 37.0)
