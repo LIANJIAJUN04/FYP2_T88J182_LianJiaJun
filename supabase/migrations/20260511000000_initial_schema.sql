@@ -24,3 +24,14 @@ CREATE TABLE alerts (
   triggered_at  TIMESTAMPTZ DEFAULT NOW(),
   resolved_at   TIMESTAMPTZ
 );
+
+-- Admins managed by Supabase Auth (auth.users)
+
+-- Explicit grants required for Supabase Data API (PostgREST / supabase-js).
+-- New projects from 2026-05-30 no longer auto-expose public tables to the
+-- Data API. These grants make the tables accessible via anon key,
+-- authenticated JWT, and the service_role key used by the backend.
+-- Existing projects: enforced on new tables from 2026-10-30.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.patients      TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.sessions      TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.alerts        TO anon, authenticated, service_role;
