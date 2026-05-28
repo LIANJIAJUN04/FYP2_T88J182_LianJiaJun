@@ -13,7 +13,7 @@ import { getSupabase } from "@/lib/supabase";
 import { getToken, clearToken } from "@/lib/auth";
 import {
   fetchPatient, fetchSessions, fetchAlerts, fetchHistory,
-  fetchCopilotAnalysis,
+  fetchCopilotAnalysis, fetchCopilotChat,
 } from "@/lib/api";
 import { StatusCard } from "@/components/StatusCard/StatusCard";
 import { MLBadge } from "@/components/MLBadge/MLBadge";
@@ -26,7 +26,7 @@ import { useCloudSSEStream } from "@/components/StatusCard/StatusCard.hooks";
 import type { Patient, Session, Alert, Reading } from "@/lib/api";
 import type { MLPrediction } from "@/components/MLBadge/MLBadge.types";
 import type { AlertHighlight } from "@/components/HistoryChart/HistoryChart.types";
-import type { ClinicalContext } from "@/components/ClinicalCopilot/ClinicalCopilot.types";
+import type { ClinicalContext, ChatMessage } from "@/components/ClinicalCopilot/ClinicalCopilot.types";
 
 function formatDt(ts: string) {
   return new Date(ts).toLocaleString("en-GB", {
@@ -115,12 +115,12 @@ export default function PatientDetailPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  // Clinical Copilot state
+  // Clinical Copilot chatbox state
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [copilotContext, setCopilotContext] = useState<ClinicalContext | null>(null);
-  const [copilotAnalysis, setCopilotAnalysis] = useState<string | null>(null);
-  const [copilotLoading, setCopilotLoading] = useState(false);
-  const [copilotError, setCopilotError] = useState<string | null>(null);
+  const [copilotMessages, setCopilotMessages] = useState<ChatMessage[]>([]);
+  const [copilotInitializing, setCopilotInitializing] = useState(false);
+  const [copilotSending, setCopilotSending] = useState(false);
 
   const historyChartRef = useRef<HTMLDivElement>(null);
 
@@ -170,7 +170,7 @@ export default function PatientDetailPage() {
     doFetchHistory(histFrom, histTo);
   }, [doFetchHistory, histFrom, histTo]);
 
-  // Check button — zooms chart, highlights window, opens Copilot with live analysis
+  // Check button — zooms chart, opens chatbox, seeds first AI message
   const handleCheckAlert = useCallback(async (alert: Alert) => {
     const startTs = new Date(alert.triggered_at).getTime();
     const endTs = alert.resolved_at
@@ -185,7 +185,8 @@ export default function PatientDetailPage() {
     setHighlightWindow({ startTs, endTs, metric: alert.metric });
     historyChartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-    // Open the copilot drawer immediately with loading state
+    // Open chatbox immediately — clear prior conversation, show typing indicator
+    setCopilotMessages([]);
     setCopilotContext({
       alertId: alert.id,
       metric: alert.metric,
@@ -195,16 +196,20 @@ export default function PatientDetailPage() {
       readingsSlice: [],
     });
     setCopilotOpen(true);
-    setCopilotLoading(true);
-    setCopilotAnalysis(null);
-    setCopilotError(null);
+    setCopilotInitializing(true);
 
-    // Fetch the history window, extract the in-event slice, call the copilot endpoint
+    // Fetch history, extract the in-window slice, call initial analysis
     const data = await doFetchHistory(fromDate, toDate);
     const slice = data.filter((r) => {
       const ts = new Date(r.ts).getTime();
       return ts >= startTs && ts <= endTs;
     });
+    const readingsSlice = slice.map((r) => ({
+      ts: r.ts, spo2: r.spo2, bpm: r.bpm, temperature: r.temperature,
+    }));
+
+    // Store the slice in context so follow-up turns can reference it
+    setCopilotContext((prev) => prev ? { ...prev, readingsSlice } : null);
 
     try {
       const token = getToken();
@@ -214,20 +219,82 @@ export default function PatientDetailPage() {
         value: alert.value,
         triggered_at: alert.triggered_at,
         resolved_at: alert.resolved_at,
-        readings_slice: slice.map((r) => ({
-          ts: r.ts,
-          spo2: r.spo2,
-          bpm: r.bpm,
-          temperature: r.temperature,
-        })),
+        readings_slice: readingsSlice,
       });
-      setCopilotAnalysis(result.analysis);
+      setCopilotMessages([{
+        id: crypto.randomUUID(),
+        role: "ai",
+        content: result.analysis,
+        timestamp: new Date(),
+      }]);
     } catch (err) {
-      setCopilotError(err instanceof Error ? err.message : "Analysis failed.");
+      setCopilotMessages([{
+        id: crypto.randomUUID(),
+        role: "ai",
+        content: err instanceof Error ? err.message : "Failed to generate analysis.",
+        timestamp: new Date(),
+        isError: true,
+      }]);
     } finally {
-      setCopilotLoading(false);
+      setCopilotInitializing(false);
     }
   }, [doFetchHistory]);
+
+  // Follow-up message handler — called by the chatbox Send button
+  const handleCopilotSend = useCallback(async (message: string) => {
+    if (!copilotContext || copilotSending || copilotInitializing) return;
+
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+    // Build history snapshot BEFORE appending the new user message
+    const historySnapshot = copilotMessages.map((m) => ({
+      role: m.role === "ai" ? "assistant" as const : "user" as const,
+      content: m.content,
+    }));
+
+    setCopilotMessages((prev) => [...prev, userMsg]);
+    setCopilotSending(true);
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error("Session expired");
+      const result = await fetchCopilotChat(token, {
+        metric: copilotContext.metric,
+        value: copilotContext.value,
+        triggered_at: copilotContext.triggeredAt,
+        resolved_at: copilotContext.resolvedAt,
+        readings_slice: copilotContext.readingsSlice,
+        history: historySnapshot,
+        message,
+      });
+      setCopilotMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "ai",
+          content: result.response,
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (err) {
+      setCopilotMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "ai",
+          content: err instanceof Error ? err.message : "Failed to get response.",
+          timestamp: new Date(),
+          isError: true,
+        },
+      ]);
+    } finally {
+      setCopilotSending(false);
+    }
+  }, [copilotContext, copilotMessages, copilotSending, copilotInitializing]);
 
   useEffect(() => {
     loadPage();
@@ -649,14 +716,15 @@ export default function PatientDetailPage() {
         </motion.div>
       </main>
 
-      {/* Clinical Copilot drawer — rendered outside main so it overlays everything */}
+      {/* Clinical Copilot chatbox — rendered outside main so it overlays everything */}
       <ClinicalCopilot
         isOpen={copilotOpen}
         onClose={() => setCopilotOpen(false)}
         context={copilotContext}
-        analysis={copilotAnalysis}
-        loading={copilotLoading}
-        error={copilotError}
+        messages={copilotMessages}
+        initializing={copilotInitializing}
+        sending={copilotSending}
+        onSendMessage={handleCopilotSend}
       />
     </div>
   );
