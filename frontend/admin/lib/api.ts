@@ -99,3 +99,30 @@ export function fetchSummary(patientId: string, token: string, range: string) {
     token
   );
 }
+
+export interface CopilotReadingPoint {
+  ts: string;
+  spo2: number;
+  bpm: number;
+  temperature: number;
+}
+
+export interface CopilotRequest {
+  metric: string;
+  value: number;
+  triggered_at: string;
+  resolved_at: string | null;
+  readings_slice: CopilotReadingPoint[];
+}
+
+export interface CopilotResult {
+  analysis: string;
+  readings_count: number;
+}
+
+export function fetchCopilotAnalysis(token: string, req: CopilotRequest) {
+  return apiFetch<CopilotResult>("/api/copilot/analyze", token, {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
