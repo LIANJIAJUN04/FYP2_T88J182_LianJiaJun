@@ -122,38 +122,13 @@ Keep the tone professional and concise. Do not repeat raw numbers already shown 
     return response.content[0].text
 
 
-# ── Copilot: single-event alert analysis ─────────────────────────────────────
+# ── Copilot shared helpers ────────────────────────────────────────────────────
 
-_SYSTEM_COPILOT = """You are a biomedical expert system integrated into MediSync, a real-time hospital patient monitoring platform. Clinicians use your analysis for rapid bedside decision support — they are trained professionals who need precise, evidence-based reasoning.
-
-Your task: analyze a single physiological alert event and its surrounding sensor telemetry.
-
-MANDATORY OUTPUT FORMAT — use these exact section headers and keywords, no deviations:
-
-## Clinical Event Analysis
-
-**Metric:** [metric name · value · time]
-**Duration:** [duration string]
-**Signal:** [exactly one of: PHYSIOLOGICAL ANOMALY | SENSOR ARTIFACT | AMBIGUOUS]
-
-[2–3 sentences justifying signal classification. For SENSOR ARTIFACT cite artifact signatures (single-reading spike, immediate baseline return, I2C transient). For PHYSIOLOGICAL ANOMALY cite multi-reading consistency, gradual onset, cross-metric correlations. For AMBIGUOUS state what would resolve it.]
-
-## Physiological Reasoning
-
-[2–3 sentences on the most probable clinical mechanism. Name specific pathophysiology (febrile tachycardia, hypoxic reflex, sympathetic activation). Cite exact values and cross-metric patterns.]
-
-## Urgency
-
-[exactly one of: ROUTINE | MONITOR | ESCALATE | IMMEDIATE] — [one sentence: specific action with numeric thresholds]
-
-## Pattern Notes
-
-• [quantitative trajectory, e.g. "Temperature: 37.2°C → 38.1°C over 8 readings (gradual ramp)"]
-• [cross-metric correlation with numbers]
-• [SpO₂ stability or change]
-• [recovery or ongoing trend]
-
-Do not add disclaimers, caveats, or "consult a physician" language. Be direct and specific."""
+_METRIC_META: dict[str, tuple[str, str]] = {
+    "spo2":        ("SpO₂",        "%"),
+    "bpm":         ("Heart Rate",  " bpm"),
+    "temperature": ("Temperature", "°C"),
+}
 
 
 def _slice_stats(vals: list[float]) -> Optional[dict]:
@@ -162,9 +137,7 @@ def _slice_stats(vals: list[float]) -> Optional[dict]:
     n = len(vals)
     avg = sum(vals) / n
     third = max(1, n // 3)
-    first_avg = sum(vals[:third]) / third
-    last_avg = sum(vals[-third:]) / third
-    delta = last_avg - first_avg
+    delta = (sum(vals[-third:]) / third) - (sum(vals[:third]) / third)
     trend = "rising" if delta > 0.5 else "falling" if delta < -0.5 else "stable"
     return {
         "min": round(min(vals), 1),
@@ -174,26 +147,17 @@ def _slice_stats(vals: list[float]) -> Optional[dict]:
     }
 
 
-def analyze_alert_event(
+def _build_event_context(
     metric: str,
     value: float,
     triggered_at: str,
     resolved_at: Optional[str],
     readings: list[dict],
-) -> str:
-    # ── Metric formatting ──────────────────────────────────────────
-    _METRIC_META: dict[str, tuple[str, str]] = {
-        "spo2":        ("SpO₂",       "%"),
-        "bpm":         ("Heart Rate", " bpm"),
-        "temperature": ("Temperature", "°C"),
-    }
+) -> dict:
+    """Pre-compute all data needed for any copilot prompt. Never sends raw readings to Claude."""
     metric_label, unit = _METRIC_META.get(metric, (metric.upper(), ""))
-    if metric == "bpm":
-        formatted_value = f"{int(value)}{unit}"
-    else:
-        formatted_value = f"{value:.1f}{unit}"
+    formatted_value = f"{int(value)}{unit}" if metric == "bpm" else f"{value:.1f}{unit}"
 
-    # ── Duration ──────────────────────────────────────────────────
     try:
         t_start = datetime.fromisoformat(triggered_at.replace("Z", "+00:00"))
         if resolved_at:
@@ -205,76 +169,170 @@ def analyze_alert_event(
     except Exception:
         duration_str = "Unknown"
 
-    # ── Stats for the in-window slice ─────────────────────────────
-    spo2_vals  = [r["spo2"]        for r in readings if r.get("spo2")        is not None]
-    bpm_vals   = [float(r["bpm"])  for r in readings if r.get("bpm")         is not None]
-    temp_vals  = [r["temperature"] for r in readings if r.get("temperature") is not None]
+    spo2_vals = [r["spo2"]               for r in readings if r.get("spo2")        is not None]
+    bpm_vals  = [float(r["bpm"])         for r in readings if r.get("bpm")         is not None]
+    temp_vals = [r["temperature"]        for r in readings if r.get("temperature") is not None]
 
     spo2_s = _slice_stats(spo2_vals)
     bpm_s  = _slice_stats(bpm_vals)
     temp_s = _slice_stats(temp_vals)
 
-    def _fmt(s: Optional[dict], u: str) -> str:
-        if not s:
-            return "no data"
-        return f"min={s['min']}{u}, max={s['max']}{u}, avg={s['avg']}{u}, trend={s['trend']}"
+    def _fmt_s(s: Optional[dict], u: str) -> str:
+        return "no data" if not s else (
+            f"min={s['min']}{u}, max={s['max']}{u}, avg={s['avg']}{u}, trend={s['trend']}"
+        )
 
-    # ── Cross-metric correlations ─────────────────────────────────
     correlations: list[str] = []
     if temp_s and bpm_s:
         if temp_s["trend"] == bpm_s["trend"] and temp_s["trend"] != "stable":
-            d_bpm  = abs(round(bpm_s["max"]  - bpm_s["min"],  0))
-            d_temp = abs(round(temp_s["max"] - temp_s["min"], 1))
             correlations.append(
-                f"BPM and Temperature both {temp_s['trend']} (Δ BPM ≈ {d_bpm:.0f} bpm, Δ Temp ≈ {d_temp:.1f}°C)"
+                f"BPM and Temperature both {temp_s['trend']} "
+                f"(Δ BPM ≈ {abs(round(bpm_s['max'] - bpm_s['min'], 0)):.0f} bpm, "
+                f"Δ Temp ≈ {abs(round(temp_s['max'] - temp_s['min'], 1)):.1f}°C)"
             )
         else:
             correlations.append(
                 f"BPM trend ({bpm_s['trend']}) diverges from Temperature trend ({temp_s['trend']})"
             )
     if spo2_s:
-        if spo2_s["min"] < 95:
-            correlations.append(f"SpO₂ dropped to {spo2_s['min']}% — hypoxic component present")
-        else:
-            correlations.append(f"SpO₂ stable at avg {spo2_s['avg']}% — no hypoxic component")
+        correlations.append(
+            f"SpO₂ dropped to {spo2_s['min']}% — hypoxic component present"
+            if spo2_s["min"] < 95
+            else f"SpO₂ stable at avg {spo2_s['avg']}% — no hypoxic component"
+        )
     corr_str = "; ".join(correlations) if correlations else "Insufficient data for cross-metric correlation"
 
-    # ── Telemetry table (capped at 25 rows) ───────────────────────
     rows: list[str] = []
     for r in readings[:25]:
         ts_s = r["ts"][:19].replace("T", " ")
         rows.append(
-            f"  {ts_s} | SpO₂={r.get('spo2', '?')}% | BPM={r.get('bpm', '?')} | Temp={r.get('temperature', '?')}°C"
+            f"  {ts_s} | SpO₂={r.get('spo2', '?')}% "
+            f"| BPM={r.get('bpm', '?')} | Temp={r.get('temperature', '?')}°C"
         )
-    table = "\n".join(rows) if rows else "  (no readings in window — analysis based on alert event data only)"
 
-    # ── User message ──────────────────────────────────────────────
-    triggered_fmt = triggered_at[:19].replace("T", " ") + " UTC"
-    resolved_fmt  = (resolved_at[:19].replace("T", " ") + " UTC") if resolved_at else "Active (unresolved)"
+    return {
+        "metric_label":    metric_label,
+        "formatted_value": formatted_value,
+        "duration_str":    duration_str,
+        "spo2_s":          spo2_s,
+        "bpm_s":           bpm_s,
+        "temp_s":          temp_s,
+        "corr_str":        corr_str,
+        "table":           "\n".join(rows) if rows else "  (no readings in window)",
+        "n_readings":      len(readings),
+        "triggered_fmt":   triggered_at[:19].replace("T", " ") + " UTC",
+        "resolved_fmt":    (
+            resolved_at[:19].replace("T", " ") + " UTC"
+            if resolved_at else "Active (unresolved)"
+        ),
+        "spo2_str":  _fmt_s(spo2_s,  "%"),
+        "bpm_str":   _fmt_s(bpm_s,   " bpm"),
+        "temp_str":  _fmt_s(temp_s,  "°C"),
+    }
+
+
+# ── Initial alert analysis ─────────────────────────────────────────────────────
+
+_SYSTEM_COPILOT_INITIAL = """You are a Clinical AI Copilot integrated into MediSync, a real-time hospital patient monitoring system. A physiological alert has been detected. Analyze the telemetry data and respond with EXACTLY this three-section structure — no other format, no markdown ## headers:
+
+📥 **What Happened**
+Write exactly 2 sentences: (1) what the sensor recorded — name the metric, state the exact triggered value and exact timestamp; (2) describe how the reading evolved — instantaneous single-point spike or sustained multi-reading elevation, and what the baseline was before and after.
+
+🔍 **Root Cause Hypothesis**
+Write exactly 3 bullet points using "•":
+• Classify as PHYSIOLOGICAL ANOMALY or SENSOR ARTIFACT with your primary reasoning (cite the number of affected readings and onset pattern)
+• Cross-metric correlation evidence — specifically what BPM, SpO₂, and Temperature did during the window (numbers, not vague descriptions)
+• The single key distinguishing factor (e.g. "gradual 8-minute ramp with concurrent tachycardia excludes I2C transient glitch" OR "single-reading spike returning to baseline in one cycle is the hallmark of MLX90614 transient noise")
+
+⚡ **Recommended Next Steps**
+Write 2–3 bullet points using "•":
+• Immediate action with specific numeric thresholds (e.g. "Reassess in 15 min; escalate if temperature exceeds 39.0°C")
+• Secondary monitoring instruction
+• Optional third action only if genuinely warranted
+
+RULES — follow strictly:
+• Use exactly the emoji-bold headers shown above, nothing else
+• Every claim must reference a specific number from the data
+• Distinguish sensor artifacts (instantaneous single-reading spikes, immediate full baseline return) from physiological events (gradual multi-reading onset, cross-metric coupling)
+• No disclaimers, no "consult a physician", no caveats — be direct"""
+
+
+def analyze_alert_event(
+    metric: str,
+    value: float,
+    triggered_at: str,
+    resolved_at: Optional[str],
+    readings: list[dict],
+) -> str:
+    ctx = _build_event_context(metric, value, triggered_at, resolved_at, readings)
 
     user_msg = f"""ALERT EVENT
-Metric: {metric_label}
-Triggered value: {formatted_value}
-Triggered at: {triggered_fmt}
-Resolved at: {resolved_fmt}
-Event duration: {duration_str}
+Metric: {ctx['metric_label']}
+Triggered value: {ctx['formatted_value']}
+Triggered at: {ctx['triggered_fmt']}
+Resolved at: {ctx['resolved_fmt']}
+Event duration: {ctx['duration_str']}
 
-SENSOR TELEMETRY — {len(readings)} readings in event window
-{table}
+SENSOR TELEMETRY — {ctx['n_readings']} readings in event window
+{ctx['table']}
 
 EVENT WINDOW STATISTICS
-SpO₂: {_fmt(spo2_s, '%')}
-Heart Rate: {_fmt(bpm_s, ' bpm')}
-Temperature: {_fmt(temp_s, '°C')}
+SpO₂: {ctx['spo2_str']}
+Heart Rate: {ctx['bpm_str']}
+Temperature: {ctx['temp_str']}
+Cross-metric correlations: {ctx['corr_str']}
 
-Cross-metric correlations: {corr_str}
-
-Analyze this alert event."""
+Provide your clinical analysis."""
 
     response = _create_with_retry(
         model="claude-haiku-4-5-20251001",
-        max_tokens=600,
-        system=_SYSTEM_COPILOT,
+        max_tokens=550,
+        system=_SYSTEM_COPILOT_INITIAL,
         messages=[{"role": "user", "content": user_msg}],
+    )
+    return response.content[0].text
+
+
+# ── Follow-up conversation ────────────────────────────────────────────────────
+
+def _build_chat_system(ctx: dict) -> str:
+    """System prompt for follow-up turns — always includes the full event context."""
+    return f"""You are a Clinical AI Copilot integrated into MediSync hospital monitoring system. You are in an ongoing clinical consultation about a specific alert event.
+
+ALERT CONTEXT — always available for reference:
+  Metric: {ctx['metric_label']} · Triggered value: {ctx['formatted_value']}
+  Duration: {ctx['duration_str']}
+  SpO₂ window: {ctx['spo2_str']}
+  Heart Rate window: {ctx['bpm_str']}
+  Temperature window: {ctx['temp_str']}
+  Cross-metric: {ctx['corr_str']}
+
+You have provided an initial structured analysis. Answer follow-up questions as a clinical expert consultant — conversationally, directly, and specifically. Format responses as short paragraphs or bullet points (• prefix) as appropriate. Be concise (3–6 sentences unless the question clearly needs more). Never add disclaimers."""
+
+
+def chat_followup(
+    metric: str,
+    value: float,
+    triggered_at: str,
+    resolved_at: Optional[str],
+    readings: list[dict],
+    history: list[dict],
+    message: str,
+) -> str:
+    ctx = _build_event_context(metric, value, triggered_at, resolved_at, readings)
+    system = _build_chat_system(ctx)
+
+    # Build Claude messages: full prior conversation + new user turn
+    messages: list[dict] = [
+        {"role": m["role"], "content": m["content"]}
+        for m in history
+    ]
+    messages.append({"role": "user", "content": message})
+
+    response = _create_with_retry(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=400,
+        system=system,
+        messages=messages,
     )
     return response.content[0].text
