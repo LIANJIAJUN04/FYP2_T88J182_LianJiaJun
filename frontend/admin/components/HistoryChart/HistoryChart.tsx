@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
-  CartesianGrid,
+  CartesianGrid, ReferenceArea,
 } from "recharts";
 import { motion } from "framer-motion";
 import { Calendar, RefreshCw } from "lucide-react";
@@ -37,20 +37,32 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   );
 }
 
-export function HistoryChart({ readings, loading, from, to, onFromChange, onToChange, onFetch }: HistoryChartProps) {
+export function HistoryChart({ readings, loading, from, to, onFromChange, onToChange, onFetch, highlight }: HistoryChartProps) {
   const [tab, setTab] = useState<Tab>("spo2");
   const metric = METRICS.find((m) => m.key === tab)!;
+
+  // Auto-switch to the alerted metric when Check is clicked
+  useEffect(() => {
+    if (!highlight?.metric) return;
+    const m = highlight.metric as Tab;
+    if (METRICS.some((x) => x.key === m)) setTab(m);
+  }, [highlight]);
 
   const data = readings.map((r) => ({
     time: new Date(r.ts).toLocaleString("en-GB", {
       month: "short", day: "numeric",
       hour: "2-digit", minute: "2-digit",
     }),
+    rawTs: new Date(r.ts).getTime(),
     spo2: r.spo2,
     bpm: r.bpm,
     temperature: r.temperature,
     status: r.status,
   }));
+
+  // Find the closest data-point time strings that bracket the highlight window
+  const hlX1 = highlight ? data.find((d) => d.rawTs >= highlight.startTs)?.time : undefined;
+  const hlX2 = highlight ? [...data].reverse().find((d) => d.rawTs <= highlight.endTs)?.time : undefined;
 
   const inputStyle = {
     background: "#0e0e10",
@@ -78,6 +90,15 @@ export function HistoryChart({ readings, loading, from, to, onFromChange, onToCh
               style={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
             >
               {readings.length} readings
+            </span>
+          )}
+          {highlight && hlX1 && hlX2 && (
+            <span
+              className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+              style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#ef4444" }} />
+              Alert highlighted
             </span>
           )}
         </div>
@@ -163,6 +184,23 @@ export function HistoryChart({ readings, loading, from, to, onFromChange, onToCh
                 axisLine={false}
               />
               <Tooltip content={<CustomTooltip />} />
+              {/* Alert highlight band */}
+              {highlight && hlX1 && hlX2 && (
+                <ReferenceArea
+                  x1={hlX1}
+                  x2={hlX2}
+                  fill="rgba(239,68,68,0.12)"
+                  stroke="rgba(239,68,68,0.35)"
+                  strokeWidth={1}
+                  label={{
+                    value: "Abnormal Status",
+                    position: "insideTopLeft",
+                    fill: "#f87171",
+                    fontSize: 9,
+                    fontWeight: 700,
+                  }}
+                />
+              )}
               <Line
                 type="monotone"
                 dataKey={tab}
