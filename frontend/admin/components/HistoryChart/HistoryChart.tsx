@@ -1,43 +1,52 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
-  CartesianGrid, ReferenceArea,
-} from "recharts";
+import { useState, useEffect, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { Calendar, RefreshCw } from "lucide-react";
 import type { HistoryChartProps } from "./HistoryChart.types";
+import type { Reading } from "@/lib/api";
+
+// Dynamic import so ECharts (canvas/DOM) never runs during SSR
+const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 
 type Tab = "spo2" | "bpm" | "temperature";
 
-const METRICS: {
+interface MetricConfig {
   key: Tab;
   label: string;
   unit: string;
   color: string;
-  domain: [number | "auto", number | "auto"];
-}[] = [
-  { key: "spo2",        label: "SpO₂",       unit: "%",   color: "#4cd7f6", domain: [85, 100] },
-  { key: "bpm",         label: "Heart Rate",  unit: "bpm", color: "#bec6e0", domain: ["auto", "auto"] },
-  { key: "temperature", label: "Temperature", unit: "°C",  color: "#f97316", domain: [34, 40] },
-];
-
-function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: { color: string; value: number; name: string }[]; label?: string }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-xl px-3 py-2 text-xs space-y-1" style={{ background: "#1b1b1d", border: "1px solid rgba(255,255,255,0.08)" }}>
-      <p style={{ color: "#909097" }}>{label}</p>
-      {payload.map((p) => (
-        <p key={p.name} style={{ color: p.color, fontWeight: 700 }}>
-          {p.value} {p.name}
-        </p>
-      ))}
-    </div>
-  );
+  min: number;
+  max: number;
 }
 
-export function HistoryChart({ readings, loading, from, to, onFromChange, onToChange, onFetch, highlight }: HistoryChartProps) {
+const METRICS: MetricConfig[] = [
+  { key: "spo2",        label: "SpO₂",       unit: "%",   color: "#4cd7f6", min: 85,  max: 100 },
+  { key: "bpm",         label: "Heart Rate",  unit: "bpm", color: "#bec6e0", min: 30,  max: 160 },
+  { key: "temperature", label: "Temperature", unit: "°C",  color: "#f97316", min: 34,  max: 40  },
+];
+
+const INPUT_STYLE: React.CSSProperties = {
+  background: "#0e0e10",
+  border: "1px solid rgba(255,255,255,0.1)",
+  color: "#e4e2e4",
+  borderRadius: "10px",
+  padding: "6px 12px",
+  fontSize: "12px",
+  outline: "none",
+};
+
+export function HistoryChart({
+  readings,
+  loading,
+  from,
+  to,
+  onFromChange,
+  onToChange,
+  onFetch,
+  highlight,
+}: HistoryChartProps) {
   const [tab, setTab] = useState<Tab>("spo2");
   const metric = METRICS.find((m) => m.key === tab)!;
 
@@ -48,42 +57,167 @@ export function HistoryChart({ readings, loading, from, to, onFromChange, onToCh
     if (METRICS.some((x) => x.key === m)) setTab(m);
   }, [highlight]);
 
-  const data = readings.map((r) => ({
-    time: new Date(r.ts).toLocaleString("en-GB", {
-      month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    }),
-    rawTs: new Date(r.ts).getTime(),
-    spo2: r.spo2,
-    bpm: r.bpm,
-    temperature: r.temperature,
-    status: r.status,
-  }));
+  // Full dataset as [timestamp_ms, value] — ECharts time axis handles these natively
+  const allData = useMemo(
+    () => readings.map((r): [number, number] => [new Date(r.ts).getTime(), r[tab]]),
+    [readings, tab],
+  );
 
-  // Find the closest data-point time strings that bracket the highlight window
-  const hlX1 = highlight ? data.find((d) => d.rawTs >= highlight.startTs)?.time : undefined;
-  const hlX2 = highlight ? [...data].reverse().find((d) => d.rawTs <= highlight.endTs)?.time : undefined;
+  // Alert-window overlay: data inside the window, null outside.
+  // null values break the line so only the abnormal segment renders in red.
+  const alertData = useMemo((): [number, number | null][] => {
+    if (!highlight) return [];
+    return readings.map((r): [number, number | null] => {
+      const ts = new Date(r.ts).getTime();
+      return [ts, ts >= highlight.startTs && ts <= highlight.endTs ? r[tab] : null];
+    });
+  }, [readings, tab, highlight]);
 
-  const inputStyle = {
-    background: "#0e0e10",
-    border: "1px solid rgba(255,255,255,0.1)",
-    color: "#e4e2e4",
-    borderRadius: "10px",
-    padding: "6px 12px",
-    fontSize: "12px",
-    outline: "none",
-  };
+  // Only show the alert visuals when at least one data point falls inside the window
+  const hasAlert = highlight != null && alertData.some((d) => d[1] !== null);
+
+  // ── ECharts option ────────────────────────────────────────────────────────
+  const option = useMemo(() => {
+    // markArea: semi-transparent red band from startTs to endTs
+    const markArea =
+      hasAlert && highlight
+        ? {
+            silent: true,
+            itemStyle: {
+              color: "rgba(239,68,68,0.14)",
+              borderColor: "rgba(239,68,68,0.55)",
+              borderWidth: 1,
+              borderType: "solid" as const,
+            },
+            label: {
+              show: true,
+              position: "insideTopLeft" as const,
+              color: "#f87171",
+              fontSize: 10,
+              fontWeight: 700,
+              formatter: "⚠ Abnormal Window",
+              backgroundColor: "rgba(239,68,68,0.12)",
+              padding: [3, 7] as [number, number],
+              borderRadius: 4,
+            },
+            // Both endpoints are raw ms timestamps — works regardless of data density
+            data: [[{ xAxis: highlight.startTs }, { xAxis: highlight.endTs }]],
+          }
+        : undefined;
+
+    return {
+      backgroundColor: "transparent",
+      animation: false,
+      grid: { top: 16, right: 24, bottom: 48, left: 52 },
+
+      tooltip: {
+        trigger: "axis" as const,
+        backgroundColor: "#1b1b1d",
+        borderColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        textStyle: { color: "#e4e2e4", fontSize: 11 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        formatter(params: any[]) {
+          const p = params.find(
+            (x) => Array.isArray(x.value) && x.value[1] != null,
+          ) ?? params[0];
+          if (!p) return "";
+          const ts = new Date(p.value[0] as number).toLocaleString("en-GB", {
+            day: "numeric", month: "short",
+            hour: "2-digit", minute: "2-digit", second: "2-digit",
+          });
+          const val = p.value[1] as number | null;
+          return (
+            `<div style="font-size:10px;color:#909097;margin-bottom:4px">${ts}</div>` +
+            `<div style="font-weight:700;color:${metric.color}">${val != null ? val : "—"} ${metric.unit}</div>`
+          );
+        },
+      },
+
+      xAxis: {
+        type: "time" as const,
+        axisLabel: {
+          fontSize: 9,
+          color: "#909097",
+          rotate: 15,
+          formatter(val: number) {
+            return new Date(val).toLocaleString("en-GB", {
+              month: "short", day: "numeric",
+              hour: "2-digit", minute: "2-digit",
+            });
+          },
+        },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false },
+      },
+
+      yAxis: {
+        type: "value" as const,
+        min: metric.min,
+        max: metric.max,
+        axisLabel: { fontSize: 10, color: "#909097" },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { lineStyle: { color: "rgba(69,70,77,0.4)", type: "dashed" as const } },
+      },
+
+      series: [
+        {
+          // Series 0: full data in metric colour + the red markArea background band
+          name: metric.unit,
+          type: "line" as const,
+          data: allData,
+          smooth: false,
+          symbol: "none",
+          lineStyle: { color: metric.color, width: 2 },
+          itemStyle: { color: metric.color },
+          ...(markArea ? { markArea } : {}),
+        },
+        // Series 1: alert-window overlay — red line + dot markers on abnormal points.
+        // connectNulls:false ensures only the in-window segment is drawn.
+        ...(hasAlert
+          ? [
+              {
+                name: "alert",
+                type: "line" as const,
+                data: alertData,
+                smooth: false,
+                symbol: "circle",
+                symbolSize: 5,
+                lineStyle: { color: "#ef4444", width: 3 },
+                itemStyle: {
+                  color: "#ef4444",
+                  borderColor: "#fca5a5",
+                  borderWidth: 1.5,
+                },
+                connectNulls: false,
+                z: 10,
+                tooltip: { show: false },
+              },
+            ]
+          : []),
+      ],
+    };
+  }, [allData, alertData, hasAlert, highlight, metric]);
+  // ── end ECharts option ───────────────────────────────────────────────────
 
   return (
     <div
       className="rounded-2xl p-6"
-      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(20px)",
+      }}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4" style={{ color: "#bec6e0" }} />
-          <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>Health Trends</h3>
+          <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>
+            Health Trends
+          </h3>
           {readings.length > 0 && (
             <span
               className="text-xs px-2 py-0.5 rounded-full"
@@ -92,12 +226,19 @@ export function HistoryChart({ readings, loading, from, to, onFromChange, onToCh
               {readings.length} readings
             </span>
           )}
-          {highlight && hlX1 && hlX2 && (
+          {hasAlert && (
             <span
               className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
-              style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}
+              style={{
+                background: "rgba(239,68,68,0.1)",
+                color: "#f87171",
+                border: "1px solid rgba(239,68,68,0.25)",
+              }}
             >
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#ef4444" }} />
+              <span
+                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                style={{ background: "#ef4444" }}
+              />
               Alert highlighted
             </span>
           )}
@@ -105,9 +246,19 @@ export function HistoryChart({ readings, loading, from, to, onFromChange, onToCh
 
         {/* Date range controls */}
         <div className="flex items-center gap-2 flex-wrap">
-          <input type="date" value={from} onChange={(e) => onFromChange(e.target.value)} style={inputStyle} />
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => onFromChange(e.target.value)}
+            style={INPUT_STYLE}
+          />
           <span style={{ color: "#45464d", fontSize: "12px" }}>to</span>
-          <input type="date" value={to} onChange={(e) => onToChange(e.target.value)} style={inputStyle} />
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => onToChange(e.target.value)}
+            style={INPUT_STYLE}
+          />
           <button
             onClick={onFetch}
             disabled={loading}
@@ -158,7 +309,9 @@ export function HistoryChart({ readings, loading, from, to, onFromChange, onToCh
               className="w-5 h-5 border-2 border-t-transparent rounded-full"
               style={{ borderColor: "rgba(255,255,255,0.08)", borderTopColor: "#4cd7f6" }}
             />
-            <p className="text-sm" style={{ color: "#45464d" }}>Loading history…</p>
+            <p className="text-sm" style={{ color: "#45464d" }}>
+              Loading history…
+            </p>
           </div>
         ) : readings.length === 0 ? (
           <div className="h-full flex items-center justify-center">
@@ -167,53 +320,12 @@ export function HistoryChart({ readings, loading, from, to, onFromChange, onToCh
             </p>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={data} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(69,70,77,0.4)" strokeOpacity={0.5} />
-              <XAxis
-                dataKey="time"
-                tick={{ fontSize: 9, fill: "#909097" }}
-                tickLine={false}
-                axisLine={false}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                domain={metric.domain}
-                tick={{ fontSize: 10, fill: "#909097" }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              {/* Alert highlight band */}
-              {highlight && hlX1 && hlX2 && (
-                <ReferenceArea
-                  x1={hlX1}
-                  x2={hlX2}
-                  fill="rgba(239,68,68,0.12)"
-                  stroke="rgba(239,68,68,0.35)"
-                  strokeWidth={1}
-                  label={{
-                    value: "Abnormal Status",
-                    position: "insideTopLeft",
-                    fill: "#f87171",
-                    fontSize: 9,
-                    fontWeight: 700,
-                  }}
-                />
-              )}
-              <Line
-                type="monotone"
-                dataKey={tab}
-                stroke={metric.color}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4, fill: metric.color }}
-                isAnimationActive={false}
-                name={metric.unit}
-                style={{ filter: `drop-shadow(0 0 4px ${metric.color})` }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <ReactECharts
+            option={option}
+            style={{ height: 240, width: "100%" }}
+            notMerge={true}
+            lazyUpdate={false}
+          />
         )}
       </motion.div>
     </div>
