@@ -126,3 +126,29 @@ export function fetchCopilotAnalysis(token: string, req: CopilotRequest) {
     body: JSON.stringify(req),
   });
 }
+
+export interface ChatConversationMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface CopilotChatRequest {
+  metric: string;
+  value: number;
+  triggered_at: string;
+  resolved_at: string | null;
+  readings_slice: CopilotReadingPoint[];
+  history: ChatConversationMessage[];
+  message: string;
+}
+
+export interface CopilotChatResult {
+  response: string;
+}
+
+export function fetchCopilotChat(token: string, req: CopilotChatRequest) {
+  return apiFetch<CopilotChatResult>("/api/copilot/chat", token, {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}

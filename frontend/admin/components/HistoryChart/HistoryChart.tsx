@@ -154,8 +154,9 @@ export function HistoryChart({
 
       yAxis: {
         type: "value" as const,
-        min: metric.min,
-        max: metric.max,
+        scale: true,
+        min: (value: { min: number }) => Math.floor(value.min) - 2,
+        max: (value: { max: number }) => Math.ceil(value.max) + 2,
         axisLabel: { fontSize: 10, color: "#909097" },
         axisLine: { show: false },
         axisTick: { show: false },
@@ -333,7 +334,7 @@ export function HistoryChart({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.25 }}
-        style={{ height: 240 }}
+        style={{ height: 450 }}
       >
         {loading ? (
           <div className="h-full flex items-center justify-center gap-2">
@@ -356,7 +357,7 @@ export function HistoryChart({
         ) : (
           <ReactECharts
             option={option}
-            style={{ height: 240, width: "100%" }}
+            style={{ height: 450, width: "100%" }}
             notMerge={true}
             lazyUpdate={false}
           />
