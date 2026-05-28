@@ -2,7 +2,7 @@
 
 A real-time IoT patient health monitoring system built for clinical bedside and remote admin use.
 
-An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine via USB. Readings are written locally for near-zero latency bedside display, and synced asynchronously to the cloud for remote admin monitoring.
+An ESP32 with SpO₂, BPM, and temperature sensors transmits readings via WiFi using the MQTT protocol to a local Mosquitto broker on the bedside machine. Readings are written locally for low-latency bedside display, and synced asynchronously to the cloud for remote admin monitoring.
 
 ---
 
@@ -10,8 +10,8 @@ An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine
 
 | | Bedside (Local) | Admin (Cloud) |
 |---|---|---|
-| Connection | USB to bedside laptop | Internet, anywhere |
-| Latency | ~1ms | 1–3s |
+| Connection | WiFi + MQTT to bedside machine | Internet, anywhere |
+| Latency | ~20ms | 1–3s |
 | Auth | Shared nurse password | Supabase Auth (email + password) |
 | Frontend | Next.js on localhost | Next.js on Vercel |
 | Reads from | Local InfluxDB | InfluxDB Cloud |
@@ -24,6 +24,8 @@ An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine
 | Layer | Tech | Where |
 |---|---|---|
 | Firmware | ESP32, Arduino framework | Device |
+| MQTT broker | Mosquitto (Docker) | Bedside machine (port 1883) |
+| MQTT bridge | Python (`mqtt_bridge.py`) | Bedside machine |
 | Local backend | FastAPI | Bedside machine (localhost:8000) |
 | Cloud backend | FastAPI | Railway |
 | Time-series (local) | InfluxDB via Docker | Bedside machine (localhost:8087) |
@@ -41,9 +43,9 @@ An ESP32 with SpO₂, BPM, and temperature sensors connects to a bedside machine
 ```
 MediSync/
 ├── firmware/
-│   ├── main/               # Main sketch — Serial JSON + LED status
+│   ├── main/               # Main sketch — WiFi + MQTT publish + LED status
 │   ├── i2c_scan/           # Utility sketch — verify sensor wiring
-│   └── serial_bridge.py    # Reads USB Serial, POSTs to local FastAPI
+│   └── mqtt_bridge.py      # Subscribes to MQTT topic, POSTs to local FastAPI
 ├── backend/
 │   ├── local/              # FastAPI — bedside machine (localhost:8000)
 │   │   ├── main.py         # App entry point, state, startup
@@ -230,7 +232,7 @@ Opens `http://localhost:3001` automatically. Kills stale processes on 8000/3001,
 **Manual start:**
 
 ```bash
-# 1. Start local InfluxDB
+# 1. Start local InfluxDB + Mosquitto MQTT broker
 docker compose up -d
 
 # 2. Start local backend
@@ -245,17 +247,29 @@ npm run dev
 
 Open `http://localhost:3001` (port 3000 may be occupied on some machines).
 
-### ESP32 Serial Bridge
+### ESP32 MQTT Setup
 
-After flashing `firmware/main/main.ino` to the ESP32:
+**1. Configure WiFi and MQTT credentials** in `firmware/main/config.h`:
+
+```cpp
+#define WIFI_SSID     "your-wifi-ssid"
+#define WIFI_PASSWORD "your-wifi-password"
+#define MQTT_BROKER   "192.168.x.x"   // bedside machine IP on the same WiFi network
+#define MQTT_PORT     1883
+#define MQTT_TOPIC    "medisync/readings"
+```
+
+**2. Flash** `firmware/main/main.ino` to the ESP32. The ESP32 will connect to WiFi and publish readings every 1s to the MQTT topic.
+
+**3. Start the MQTT bridge** (after `docker compose up -d` has started Mosquitto):
 
 ```bash
 cd firmware
-pip install pyserial requests
-python serial_bridge.py   # auto-detects ESP32 USB port
+pip install paho-mqtt requests
+python mqtt_bridge.py   # subscribes to medisync/readings, POSTs to FastAPI
 ```
 
-The bridge reads JSON lines from the ESP32 over USB Serial and forwards each reading to `localhost:8000/api/readings`. The local backend must be running first.
+The bridge subscribes to the MQTT topic on `localhost:1883` and forwards each reading to `localhost:8000/api/readings`. The local backend must be running first.
 
 To verify sensor wiring before flashing the main sketch, flash `firmware/i2c_scan/i2c_scan.ino` and open the Serial Monitor — it should report MAX30102 at `0x57` and MLX90614 at `0x5A`.
 
@@ -337,7 +351,7 @@ See `CLAUDE.md` for the full variable reference.
 | 5 | Cloud FastAPI backend | ✅ Done |
 | 6 | Bedside frontend | ✅ Done |
 | 7 | Admin frontend | ✅ Done |
-| 8 | ESP32 firmware | ✅ Done |
+| 8 | ESP32 firmware — WiFi + MQTT | ⏳ In Progress |
 | 8.5 | Claude API AI Health Summary | ✅ Done |
 | 9 | ML anomaly detection | ✅ Done |
 | 10 | Polish & hardening | ✅ Done |
@@ -349,6 +363,6 @@ See `CLAUDE.md` for the full variable reference.
 - ML artefacts (`ml/*.joblib`) are gitignored — retrain locally after cloning by re-running `ml/health_risk_ml.ipynb`
 - `app.state.active_patient_id` is in-memory — restarting local FastAPI requires the nurse to log in again
 - `status.py` is duplicated in local and cloud backends — keep them in sync
-- ESP32 sends readings over USB Serial to `serial_bridge.py`, not directly via WiFi/HTTP
+- ESP32 sends readings via WiFi to Mosquitto MQTT broker; `mqtt_bridge.py` subscribes and forwards to FastAPI
 - InfluxDB Cloud free tier: 5 MB/5 min write limit, 30-day retention
 - `ANTHROPIC_API_KEY` must be set in Railway for the AI summary endpoint — it is not needed locally
