@@ -1,6 +1,8 @@
 import asyncio
 import logging
 
+logger = logging.getLogger(__name__)
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,8 +48,6 @@ app.include_router(stream.router)
 async def startup():
     app.state.ml_model = await asyncio.to_thread(load_model)
     asyncio.create_task(cloud_sync_worker())
-    # Load ML model in a thread so the event loop isn't blocked
-    app.state.ml_model = await asyncio.to_thread(load_model)
     if app.state.ml_model:
         logger.info("[main] ML model loaded — anomaly detection active")
     else:

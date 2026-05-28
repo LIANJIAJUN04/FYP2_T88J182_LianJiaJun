@@ -24,7 +24,7 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="rounded-2xl p-3 sm:p-5 flex flex-col items-center gap-1 sm:gap-2"
+      className="rounded-2xl p-3 sm:p-5 flex flex-col items-center justify-center gap-1 sm:gap-2 h-full"
       style={{
         background: "rgba(255,255,255,0.04)",
         border: "1px solid rgba(255,255,255,0.08)",
