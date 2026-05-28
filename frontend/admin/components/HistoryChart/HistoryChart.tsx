@@ -95,7 +95,7 @@ export function HistoryChart({
               color: "#f87171",
               fontSize: 10,
               fontWeight: 700,
-              formatter: "⚠ Abnormal Window",
+              formatter: "⚠ Abnormal Detection",
               backgroundColor: "rgba(239,68,68,0.12)",
               padding: [3, 7] as [number, number],
               borderRadius: 4,
@@ -108,7 +108,7 @@ export function HistoryChart({
     return {
       backgroundColor: "transparent",
       animation: false,
-      grid: { top: 16, right: 24, bottom: 48, left: 52 },
+      grid: { top: 16, right: 24, bottom: 68, left: 52 },
 
       tooltip: {
         trigger: "axis" as const,
@@ -161,6 +161,40 @@ export function HistoryChart({
         axisTick: { show: false },
         splitLine: { lineStyle: { color: "rgba(69,70,77,0.4)", type: "dashed" as const } },
       },
+
+      // dataZoom: mouse-wheel scroll to zoom in/out, drag to pan;
+      // slider at the bottom gives a persistent range handle.
+      dataZoom: [
+        {
+          type: "inside",
+          xAxisIndex: 0,
+          filterMode: "filter",
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true,
+          moveOnMouseWheel: false,
+          preventDefaultMouseMove: true,
+        },
+        {
+          type: "slider",
+          xAxisIndex: 0,
+          height: 18,
+          bottom: 8,
+          fillerColor: "rgba(76,215,246,0.08)",
+          borderColor: "rgba(255,255,255,0.06)",
+          handleStyle: { color: "#4cd7f6", borderColor: "#4cd7f6" },
+          moveHandleStyle: { color: "#4cd7f6" },
+          selectedDataBackground: {
+            areaStyle: { color: "rgba(76,215,246,0.06)" },
+            lineStyle: { color: "rgba(76,215,246,0.25)" },
+          },
+          dataBackground: {
+            areaStyle: { color: "rgba(255,255,255,0.02)" },
+            lineStyle: { color: "rgba(255,255,255,0.06)" },
+          },
+          labelFormatter: () => "",
+          textStyle: { color: "transparent" },
+        },
+      ],
 
       series: [
         {
