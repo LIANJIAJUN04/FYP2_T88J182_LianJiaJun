@@ -373,8 +373,12 @@ export function ClinicalCopilot({
                   : <UserBubble key={msg.id} msg={msg} />,
               )}
 
-              {/* Typing indicator while waiting for a response */}
-              {isBusy && <TypingIndicator />}
+              {/* Typing indicator: shown only while waiting for the FIRST token.
+                  Once the AI message bubble is seeded (last message role === "ai"),
+                  the indicator hides and the bubble takes over — no overlap. */}
+              {isBusy && (messages.length === 0 || messages[messages.length - 1].role === "user") && (
+                <TypingIndicator />
+              )}
 
               {/* Invisible sentinel — scrolled into view on new messages */}
               <div ref={bottomRef} />

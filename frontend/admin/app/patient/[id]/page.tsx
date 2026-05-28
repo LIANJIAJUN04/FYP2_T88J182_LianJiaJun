@@ -13,7 +13,7 @@ import { getSupabase } from "@/lib/supabase";
 import { getToken, clearToken } from "@/lib/auth";
 import {
   fetchPatient, fetchSessions, fetchAlerts, fetchHistory,
-  fetchCopilotAnalysis, fetchCopilotChat,
+  fetchCopilotAnalysis, streamCopilotChat,
 } from "@/lib/api";
 import { StatusCard } from "@/components/StatusCard/StatusCard";
 import { MLBadge } from "@/components/MLBadge/MLBadge";
@@ -240,7 +240,7 @@ export default function PatientDetailPage() {
     }
   }, [doFetchHistory]);
 
-  // Follow-up message handler — called by the chatbox Send button
+  // Follow-up message handler — streams response word-by-word into the chat bubble.
   const handleCopilotSend = useCallback(async (message: string) => {
     if (!copilotContext || copilotSending || copilotInitializing) return;
 
@@ -250,7 +250,7 @@ export default function PatientDetailPage() {
       content: message,
       timestamp: new Date(),
     };
-    // Build history snapshot BEFORE appending the new user message
+    // Snapshot history BEFORE appending the new user message
     const historySnapshot = copilotMessages.map((m) => ({
       role: m.role === "ai" ? "assistant" as const : "user" as const,
       content: m.content,
@@ -259,10 +259,16 @@ export default function PatientDetailPage() {
     setCopilotMessages((prev) => [...prev, userMsg]);
     setCopilotSending(true);
 
+    // aiMsgId is null until the first chunk arrives. Seeding the AI message on
+    // first chunk automatically hides the TypingIndicator because ClinicalCopilot
+    // only shows it while the last message in the list has role === "user".
+    let aiMsgId: string | null = null;
+
     try {
       const token = getToken();
       if (!token) throw new Error("Session expired");
-      const result = await fetchCopilotChat(token, {
+
+      for await (const chunk of streamCopilotChat(token, {
         metric: copilotContext.metric,
         value: copilotContext.value,
         triggered_at: copilotContext.triggeredAt,
@@ -270,27 +276,37 @@ export default function PatientDetailPage() {
         readings_slice: copilotContext.readingsSlice,
         history: historySnapshot,
         message,
-      });
-      setCopilotMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "ai",
-          content: result.response,
-          timestamp: new Date(),
-        },
-      ]);
+      })) {
+        if (!aiMsgId) {
+          // First chunk: create the AI message bubble — typing indicator disappears
+          aiMsgId = crypto.randomUUID();
+          setCopilotMessages((prev) => [
+            ...prev,
+            { id: aiMsgId!, role: "ai", content: chunk, timestamp: new Date() },
+          ]);
+        } else {
+          // Subsequent chunks: append to the existing bubble
+          setCopilotMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiMsgId ? { ...m, content: m.content + chunk } : m,
+            ),
+          );
+        }
+      }
     } catch (err) {
-      setCopilotMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "ai",
-          content: err instanceof Error ? err.message : "Failed to get response.",
-          timestamp: new Date(),
-          isError: true,
-        },
-      ]);
+      const errText = err instanceof Error ? err.message : "Failed to get response.";
+      if (!aiMsgId) {
+        // Error before any chunk: add a fresh error bubble
+        setCopilotMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: "ai", content: errText, timestamp: new Date(), isError: true },
+        ]);
+      } else {
+        // Error mid-stream: mark the existing bubble as an error
+        setCopilotMessages((prev) =>
+          prev.map((m) => m.id === aiMsgId ? { ...m, isError: true } : m),
+        );
+      }
     } finally {
       setCopilotSending(false);
     }

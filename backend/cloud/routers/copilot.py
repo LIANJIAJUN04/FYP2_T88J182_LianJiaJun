@@ -1,12 +1,14 @@
 import asyncio
+import json
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from auth import require_auth
-from claude_service import analyze_alert_event, chat_followup
+from claude_service import analyze_alert_event, stream_chat_followup
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -19,7 +21,9 @@ class ReadingPoint(BaseModel):
     temperature: float
 
 
-# ── /api/copilot/analyze — initial structured analysis ───────────────────────
+# ── /api/copilot/analyze — buffered initial analysis (JSON) ──────────────────
+# Must return JSON, not SSE: the frontend BubbleContent renderer requires the
+# complete text before it can validate and render the three-section structure.
 
 class CopilotRequest(BaseModel):
     metric: str
@@ -55,7 +59,7 @@ async def analyze_alert(
     return CopilotResponse(analysis=analysis, readings_count=len(readings))
 
 
-# ── /api/copilot/chat — multi-turn follow-up conversation ───────────────────
+# ── /api/copilot/chat — streaming follow-up (SSE) ────────────────────────────
 
 class ConversationMessage(BaseModel):
     role: str   # "user" or "assistant"
@@ -72,20 +76,23 @@ class CopilotChatRequest(BaseModel):
     message: str
 
 
-class CopilotChatResponse(BaseModel):
-    response: str
+async def _chat_sse_generator(req: CopilotChatRequest):
+    """
+    Wraps stream_chat_followup as an SSE byte stream.
 
+    Event format:
+      data: {"type": "chunk", "text": "..."}   — one text fragment from the model
+      data: {"type": "done"}                    — stream completed successfully
+      data: {"type": "error", "message": "..."}— unrecoverable error mid-stream
 
-@router.post("/api/copilot/chat", response_model=CopilotChatResponse)
-async def chat_with_copilot(
-    req: CopilotChatRequest,
-    _auth: dict = Depends(require_auth),
-):
+    The generator never raises; errors are surfaced as a typed SSE event so the
+    frontend can display a graceful in-bubble error rather than a broken stream.
+    """
     readings = [r.model_dump() for r in req.readings_slice]
-    history  = [{"role": m.role, "content": m.content} for m in req.history]
+    history = [{"role": m.role, "content": m.content} for m in req.history]
+
     try:
-        response_text = await asyncio.to_thread(
-            chat_followup,
+        async for chunk in stream_chat_followup(
             metric=req.metric,
             value=req.value,
             triggered_at=req.triggered_at,
@@ -93,8 +100,31 @@ async def chat_with_copilot(
             readings=readings,
             history=history,
             message=req.message,
-        )
+        ):
+            yield f"data: {json.dumps({'type': 'chunk', 'text': chunk})}\n\n".encode()
+
+        yield f"data: {json.dumps({'type': 'done'})}\n\n".encode()
+
     except Exception as e:
-        logger.error("Copilot chat failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
-    return CopilotChatResponse(response=response_text)
+        logger.error("Copilot chat stream error: %s", e)
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n".encode()
+
+
+@router.post("/api/copilot/chat")
+async def chat_with_copilot(
+    req: CopilotChatRequest,
+    _auth: dict = Depends(require_auth),
+):
+    """
+    Streams follow-up responses as SSE. TTFB drops to <500ms (first token from Haiku).
+    X-Accel-Buffering: no disables nginx proxy buffering on Railway so chunks
+    reach the browser immediately rather than being held until the buffer fills.
+    """
+    return StreamingResponse(
+        _chat_sse_generator(req),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

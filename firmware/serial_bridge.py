@@ -4,6 +4,14 @@ serial_bridge.py
 Reads JSON lines from the ESP32 over USB serial and forwards each reading
 to the local FastAPI backend at localhost:8000.
 
+Disconnect detection (two layers):
+  1. SerialException  — USB cable pulled, device reset, or OS revoked the port.
+     The bridge immediately POSTs /api/device/disconnect so the session closes
+     with accurate timestamps rather than waiting for the 5-min watchdog.
+  2. Idle timeout     — No data (including no-finger status lines) received for
+     IDLE_TIMEOUT_S seconds.  Treats total serial silence as a hard disconnect.
+     Notified once per offline event; resets when the device starts talking again.
+
 Usage:
     pip install pyserial requests
     python serial_bridge.py
@@ -22,11 +30,13 @@ import requests
 import serial
 import serial.tools.list_ports
 
-BAUD_RATE      = 115200
-API_URL        = "http://localhost:8000/api/readings"
-DEVICE_SECRET  = "esp32"
-DEVICE_ID      = "esp32-001"
-TIMEOUT_S      = 2
+BAUD_RATE       = 115200
+API_URL         = "http://localhost:8000/api/readings"
+DISCONNECT_URL  = "http://localhost:8000/api/device/disconnect"
+DEVICE_SECRET   = "esp32"
+DEVICE_ID       = "esp32-001"
+TIMEOUT_S       = 2
+IDLE_TIMEOUT_S  = 30   # seconds of total silence before flagging as disconnected
 
 # USB serial chips used by ESP32 dev boards
 ESP32_USB_IDS = [
@@ -55,7 +65,7 @@ def find_port() -> str:
 
     all_ports = [p.device for p in ports]
     print(f"[bridge] No ESP32 found. Available ports: {all_ports or 'none'}")
-    print(f"[bridge] Plug in the ESP32 and retry.")
+    print("[bridge] Plug in the ESP32 and retry.")
     sys.exit(1)
 
 
@@ -83,6 +93,15 @@ def post_reading(payload: dict) -> bool:
         return False
 
 
+def notify_disconnect() -> None:
+    """Tell FastAPI to close the active session immediately."""
+    try:
+        requests.post(DISCONNECT_URL, timeout=TIMEOUT_S)
+        print("[bridge] Disconnect notified — session closed by backend")
+    except Exception as e:
+        print(f"[bridge] Could not reach backend for disconnect: {e}")
+
+
 def main():
     port = find_port()
     print(f"[bridge] Opening {port} at {BAUD_RATE} baud")
@@ -95,20 +114,46 @@ def main():
         time.sleep(0.5)
         ser.reset_input_buffer()
         print(f"[bridge] Listening — forwarding to {API_URL}")
+
+        last_data_at   = time.monotonic()   # timestamp of last received byte
+        device_offline = False              # True while we believe device is gone
+
         while True:
+            # ── Read one line ──────────────────────────────────────────────
             try:
                 raw = ser.readline().decode("utf-8", errors="ignore").strip()
             except serial.SerialException as e:
-                print(f"[bridge] Serial read error: {e} — retrying in 2s")
+                # USB unplugged or OS revoked the port
+                print(f"[bridge] Serial disconnected: {e}")
+                if not device_offline:
+                    device_offline = True
+                    notify_disconnect()
                 time.sleep(2)
                 continue
 
-            if not raw or raw.startswith("["):
-                # ESP32 debug lines start with '[' — print and skip
-                if raw:
-                    print(f"[esp32] {raw}")
+            # ── Check idle timeout ─────────────────────────────────────────
+            # readline() returns "" after its 2-s timeout when the port is
+            # open but the device is silent (e.g. firmware crashed, battery
+            # dead while USB is still physically connected).
+            if raw:
+                last_data_at = time.monotonic()
+                if device_offline:
+                    print("[bridge] Device back online")
+                    device_offline = False
+            else:
+                idle = time.monotonic() - last_data_at
+                if idle > IDLE_TIMEOUT_S and not device_offline:
+                    print(f"[bridge] No data for {idle:.0f}s — flagging as disconnected")
+                    device_offline = True
+                    notify_disconnect()
+                continue  # empty line — nothing to forward
+
+            # ── Skip ESP32 debug lines ─────────────────────────────────────
+            if raw.startswith("["):
+                print(f"[esp32] {raw}")
                 continue
 
+            # ── Parse and forward ──────────────────────────────────────────
             try:
                 payload = json.loads(raw)
             except json.JSONDecodeError:
