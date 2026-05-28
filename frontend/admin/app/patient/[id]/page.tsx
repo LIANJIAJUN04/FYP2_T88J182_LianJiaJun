@@ -11,17 +11,22 @@ import {
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { getToken, clearToken } from "@/lib/auth";
-import { fetchPatient, fetchSessions, fetchAlerts, fetchHistory } from "@/lib/api";
+import {
+  fetchPatient, fetchSessions, fetchAlerts, fetchHistory,
+  fetchCopilotAnalysis,
+} from "@/lib/api";
 import { StatusCard } from "@/components/StatusCard/StatusCard";
 import { MLBadge } from "@/components/MLBadge/MLBadge";
 import { GaugeCard } from "@/components/GaugeCard/GaugeCard";
 import { LiveChart } from "@/components/LiveChart/LiveChart";
 import { HistoryChart } from "@/components/HistoryChart/HistoryChart";
 import { AISummaryPanel } from "@/components/AISummaryPanel/AISummaryPanel";
+import { ClinicalCopilot } from "@/components/ClinicalCopilot/ClinicalCopilot";
 import { useCloudSSEStream } from "@/components/StatusCard/StatusCard.hooks";
 import type { Patient, Session, Alert, Reading } from "@/lib/api";
 import type { MLPrediction } from "@/components/MLBadge/MLBadge.types";
 import type { AlertHighlight } from "@/components/HistoryChart/HistoryChart.types";
+import type { ClinicalContext } from "@/components/ClinicalCopilot/ClinicalCopilot.types";
 
 function formatDt(ts: string) {
   return new Date(ts).toLocaleString("en-GB", {
@@ -50,12 +55,48 @@ function formatAlarmValue(metric: string, value: number): string {
 }
 
 function formatAlertDuration(triggered: string, resolved: string | null): string | null {
-  if (!resolved) return null; // caller renders "Active" pulsing indicator
+  if (!resolved) return null;
   const ms = new Date(resolved).getTime() - new Date(triggered).getTime();
   const mins = Math.round(ms / 60000);
   if (mins < 60) return `${mins} min`;
   const hrs = Math.floor(mins / 60);
   return `${hrs}h ${mins % 60}m`;
+}
+
+// ── Card wrapper shared by Session History and Alert Log ──────────────────────
+function TableCard({
+  icon, title, badge, badgeStyle, children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  badge: React.ReactNode;
+  badgeStyle?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden flex flex-col"
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        backdropFilter: "blur(20px)",
+      }}
+    >
+      <div
+        className="px-5 py-4 flex items-center gap-2 shrink-0"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+      >
+        {icon}
+        <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>{title}</h3>
+        <span className="text-xs px-2 py-0.5 rounded-full ml-auto" style={badgeStyle}>
+          {badge}
+        </span>
+      </div>
+      <div className="overflow-y-auto" style={{ maxHeight: 288 }}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
 export default function PatientDetailPage() {
@@ -73,6 +114,13 @@ export default function PatientDetailPage() {
   const [highlightWindow, setHighlightWindow] = useState<AlertHighlight | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Clinical Copilot state
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [copilotContext, setCopilotContext] = useState<ClinicalContext | null>(null);
+  const [copilotAnalysis, setCopilotAnalysis] = useState<string | null>(null);
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
 
   const historyChartRef = useRef<HTMLDivElement>(null);
 
@@ -99,16 +147,18 @@ export default function PatientDetailPage() {
     }
   }, [patientId, router]);
 
-  // Core fetch — accepts explicit date params so it can be called from Check or the Fetch button
-  const doFetchHistory = useCallback(async (from: string, to: string) => {
+  // Returns the fetched data so callers (Check button) can use it immediately
+  const doFetchHistory = useCallback(async (from: string, to: string): Promise<Reading[]> => {
     const token = getToken();
-    if (!token) return;
+    if (!token) return [];
     setHistoryLoading(true);
     try {
       const data = await fetchHistory(patientId, token, from, to);
       setHistory(data);
+      return data;
     } catch {
       setHistory([]);
+      return [];
     } finally {
       setHistoryLoading(false);
     }
@@ -120,10 +170,9 @@ export default function PatientDetailPage() {
     doFetchHistory(histFrom, histTo);
   }, [doFetchHistory, histFrom, histTo]);
 
-  // Check button — zooms HistoryChart to the alert window and highlights it
-  const handleCheckAlert = useCallback((alert: Alert) => {
+  // Check button — zooms chart, highlights window, opens Copilot with live analysis
+  const handleCheckAlert = useCallback(async (alert: Alert) => {
     const startTs = new Date(alert.triggered_at).getTime();
-    // Active alerts: assume a 5-min inspection window; resolved alerts: use actual end time
     const endTs = alert.resolved_at
       ? new Date(alert.resolved_at).getTime()
       : startTs + 5 * 60 * 1000;
@@ -134,10 +183,50 @@ export default function PatientDetailPage() {
     setHistFrom(fromDate);
     setHistTo(toDate);
     setHighlightWindow({ startTs, endTs, metric: alert.metric });
-
-    doFetchHistory(fromDate, toDate);
-
     historyChartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Open the copilot drawer immediately with loading state
+    setCopilotContext({
+      alertId: alert.id,
+      metric: alert.metric,
+      value: alert.value,
+      triggeredAt: alert.triggered_at,
+      resolvedAt: alert.resolved_at,
+      readingsSlice: [],
+    });
+    setCopilotOpen(true);
+    setCopilotLoading(true);
+    setCopilotAnalysis(null);
+    setCopilotError(null);
+
+    // Fetch the history window, extract the in-event slice, call the copilot endpoint
+    const data = await doFetchHistory(fromDate, toDate);
+    const slice = data.filter((r) => {
+      const ts = new Date(r.ts).getTime();
+      return ts >= startTs && ts <= endTs;
+    });
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error("Session expired");
+      const result = await fetchCopilotAnalysis(token, {
+        metric: alert.metric,
+        value: alert.value,
+        triggered_at: alert.triggered_at,
+        resolved_at: alert.resolved_at,
+        readings_slice: slice.map((r) => ({
+          ts: r.ts,
+          spo2: r.spo2,
+          bpm: r.bpm,
+          temperature: r.temperature,
+        })),
+      });
+      setCopilotAnalysis(result.analysis);
+    } catch (err) {
+      setCopilotError(err instanceof Error ? err.message : "Analysis failed.");
+    } finally {
+      setCopilotLoading(false);
+    }
   }, [doFetchHistory]);
 
   useEffect(() => {
@@ -167,7 +256,7 @@ export default function PatientDetailPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#131315" }}>
-      {/* Ambient */}
+      {/* Ambient glow */}
       <div
         className="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] pointer-events-none"
         style={{ background: "radial-gradient(ellipse at center top, rgba(76,215,246,0.04) 0%, transparent 65%)" }}
@@ -224,7 +313,7 @@ export default function PatientDetailPage() {
       </motion.header>
 
       <main className="flex-1 p-4 sm:p-6 max-w-6xl w-full mx-auto space-y-6">
-        {/* Breadcrumb + back */}
+        {/* Breadcrumb */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -275,37 +364,28 @@ export default function PatientDetailPage() {
                   >
                     {patient.name}
                   </h1>
-                  <p
-                    className="text-xs mt-0.5"
-                    style={{ color: "#909097", fontFamily: "'Space Grotesk', monospace" }}
-                  >
+                  <p className="text-xs mt-0.5" style={{ color: "#909097", fontFamily: "'Space Grotesk', monospace" }}>
                     IC: {patient.ic_number}
                   </p>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <span
-                      className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                      style={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
-                    >
-                      Ward {patient.ward}
-                    </span>
-                    <span
-                      className="text-xs px-2 py-0.5 rounded-full font-semibold capitalize"
-                      style={{ background: "rgba(255,255,255,0.04)", color: "#909097" }}
-                    >
-                      {patient.gender}
-                    </span>
-                    <span
-                      className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                      style={{ background: "rgba(255,255,255,0.04)", color: "#909097" }}
-                    >
-                      Age {patient.age}
-                    </span>
-                    <span
-                      className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                      style={{ background: "rgba(255,255,255,0.04)", color: "#909097" }}
-                    >
-                      {patient.assigned_doctor}
-                    </span>
+                    {[
+                      { label: `Ward ${patient.ward}`, accent: true },
+                      { label: patient.gender, accent: false },
+                      { label: `Age ${patient.age}`, accent: false },
+                      { label: patient.assigned_doctor, accent: false },
+                    ].map(({ label, accent }) => (
+                      <span
+                        key={label}
+                        className="text-xs px-2 py-0.5 rounded-full font-semibold capitalize"
+                        style={
+                          accent
+                            ? { background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }
+                            : { background: "rgba(255,255,255,0.04)", color: "#909097" }
+                        }
+                      >
+                        {label}
+                      </span>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -340,7 +420,7 @@ export default function PatientDetailPage() {
           </motion.div>
         )}
 
-        {/* Row 1: Patient Status (50%) | ML Detection (50%) */}
+        {/* Row: StatusCard (50%) | MLBadge (50%) */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -357,7 +437,7 @@ export default function PatientDetailPage() {
           />
         </motion.div>
 
-        {/* Row 2: SpO₂ (33%) | BPM (33%) | Temperature (33%) */}
+        {/* Row: SpO₂ | BPM | Temperature */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -365,33 +445,18 @@ export default function PatientDetailPage() {
           className="grid grid-cols-3 gap-4"
         >
           <GaugeCard
-            metric="spo2"
-            value={latest?.spo2 ?? null}
-            unit="%"
-            label="SpO₂"
-            min={80} max={100}
-            normalRange={[95, 100]}
-            warningRange={[90, 94]}
+            metric="spo2" value={latest?.spo2 ?? null} unit="%" label="SpO₂"
+            min={80} max={100} normalRange={[95, 100]} warningRange={[90, 94]}
             icon={<Droplets className="w-4 h-4" />}
           />
           <GaugeCard
-            metric="bpm"
-            value={latest?.bpm ?? null}
-            unit="bpm"
-            label="Heart Rate"
-            min={20} max={160}
-            normalRange={[60, 100]}
-            warningRange={[40, 130]}
+            metric="bpm" value={latest?.bpm ?? null} unit="bpm" label="Heart Rate"
+            min={20} max={160} normalRange={[60, 100]} warningRange={[40, 130]}
             icon={<HeartPulse className="w-4 h-4" />}
           />
           <GaugeCard
-            metric="temperature"
-            value={latest?.temperature ?? null}
-            unit="°C"
-            label="Temperature"
-            min={34} max={41}
-            normalRange={[36.1, 37.2]}
-            warningRange={[35, 38]}
+            metric="temperature" value={latest?.temperature ?? null} unit="°C" label="Temperature"
+            min={34} max={41} normalRange={[36.1, 37.2]} warningRange={[35, 38]}
             icon={<Thermometer className="w-4 h-4" />}
           />
         </motion.div>
@@ -405,7 +470,7 @@ export default function PatientDetailPage() {
           <LiveChart readings={readings} />
         </motion.div>
 
-        {/* History chart — ref used by Check button to scroll here */}
+        {/* History chart — scrolled into view by the Check button */}
         <motion.div
           ref={historyChartRef}
           initial={{ opacity: 0, y: 12 }}
@@ -424,137 +489,31 @@ export default function PatientDetailPage() {
           />
         </motion.div>
 
-        {/* Alert Log — full-width, linked to Health Trends via Check button */}
+        {/* ── Bottom section ────────────────────────────────────────────── */}
+
+        {/* Row 1 (full width): AI Health Summary */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.28 }}
-          className="rounded-2xl overflow-hidden"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}
-        >
-          <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <AlertTriangle className="w-4 h-4" style={{ color: "#f59e0b" }} />
-            <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>Alert Log</h3>
-            <span
-              className="text-xs px-2 py-0.5 rounded-full ml-auto"
-              style={
-                unresolvedCount > 0
-                  ? { background: "rgba(255,180,171,0.08)", color: "#ffb4ab" }
-                  : { background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }
-              }
-            >
-              {unresolvedCount > 0 ? `${unresolvedCount} unresolved` : "All clear"}
-            </span>
-          </div>
-          <div className="overflow-y-auto max-h-72">
-            {alertLog.length === 0 ? (
-              <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
-                No alerts recorded.
-              </p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                    {["Metric", "Alarm Value", "Started", "Duration", "Check"].map((h) => (
-                      <th
-                        key={h}
-                        className="px-5 py-2 text-left font-semibold uppercase tracking-wider"
-                        style={{ color: "#45464d" }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {alertLog.map((a) => {
-                    const duration = formatAlertDuration(a.triggered_at, a.resolved_at);
-                    return (
-                      <tr key={a.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                        {/* Metric */}
-                        <td className="px-5 py-3">
-                          <span
-                            className="px-2 py-0.5 rounded-lg font-semibold uppercase"
-                            style={{ background: "#f59e0b18", color: "#fbbf24" }}
-                          >
-                            {a.metric}
-                          </span>
-                        </td>
-                        {/* Alarm Value */}
-                        <td className="px-5 py-3 font-bold tabular-nums" style={{ color: "#ffb4ab" }}>
-                          {formatAlarmValue(a.metric, a.value)}
-                        </td>
-                        {/* Started */}
-                        <td className="px-5 py-3" style={{ color: "#909097" }}>
-                          {formatDt(a.triggered_at)}
-                        </td>
-                        {/* Duration */}
-                        <td className="px-5 py-3">
-                          {duration !== null ? (
-                            <span style={{ color: "#c6c6cd" }}>{duration}</span>
-                          ) : (
-                            <span className="flex items-center gap-1.5">
-                              <span
-                                className="w-1.5 h-1.5 rounded-full animate-pulse"
-                                style={{ background: "#ffb4ab" }}
-                              />
-                              <span style={{ color: "#ffb4ab" }}>Active</span>
-                            </span>
-                          )}
-                        </td>
-                        {/* Check — zooms Health Trends to this alert */}
-                        <td className="px-5 py-3">
-                          <button
-                            onClick={() => handleCheckAlert(a)}
-                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
-                            style={{
-                              background: "rgba(76,215,246,0.08)",
-                              border: "1px solid rgba(76,215,246,0.2)",
-                              color: "#4cd7f6",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <Search className="w-3 h-3" />
-                            Check
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </motion.div>
-
-        {/* AI Summary panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.31 }}
         >
           <AISummaryPanel patientId={patientId} token={token} />
         </motion.div>
 
-        {/* Session log — full-width */}
+        {/* Row 2 (grid): Session History | Alert Log */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.34 }}
-          className="rounded-2xl overflow-hidden"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}
+          transition={{ duration: 0.4, delay: 0.31 }}
+          className="grid grid-cols-1 lg:grid-cols-2 gap-6"
         >
-          <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <Clock className="w-4 h-4" style={{ color: "#bec6e0" }} />
-            <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>Session History</h3>
-            <span
-              className="text-xs px-2 py-0.5 rounded-full ml-auto"
-              style={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
-            >
-              {sessions.length}
-            </span>
-          </div>
-          <div className="overflow-y-auto max-h-72">
+          {/* Session History */}
+          <TableCard
+            icon={<Clock className="w-4 h-4" style={{ color: "#bec6e0" }} />}
+            title="Session History"
+            badge={sessions.length}
+            badgeStyle={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
+          >
             {sessions.length === 0 ? (
               <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
                 No sessions recorded.
@@ -584,12 +543,9 @@ export default function PatientDetailPage() {
                           return hrs > 0 ? `${hrs}h ${mins % 60}m` : `${mins}m`;
                         })()
                       : null;
-
                     return (
                       <tr key={s.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                        <td className="px-5 py-3" style={{ color: "#c6c6cd" }}>
-                          {formatDt(s.started_at)}
-                        </td>
+                        <td className="px-5 py-3" style={{ color: "#c6c6cd" }}>{formatDt(s.started_at)}</td>
                         <td className="px-5 py-3">
                           {s.ended_at ? (
                             <span style={{ color: "#909097" }}>{formatDt(s.ended_at)}</span>
@@ -600,8 +556,88 @@ export default function PatientDetailPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-3" style={{ color: "#909097" }}>
-                          {duration ?? "—"}
+                        <td className="px-5 py-3" style={{ color: "#909097" }}>{duration ?? "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </TableCard>
+
+          {/* Alert Log */}
+          <TableCard
+            icon={<AlertTriangle className="w-4 h-4" style={{ color: "#f59e0b" }} />}
+            title="Alert Log"
+            badge={unresolvedCount > 0 ? `${unresolvedCount} unresolved` : "All clear"}
+            badgeStyle={
+              unresolvedCount > 0
+                ? { background: "rgba(255,180,171,0.08)", color: "#ffb4ab" }
+                : { background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }
+            }
+          >
+            {alertLog.length === 0 ? (
+              <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
+                No alerts recorded.
+              </p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                    {["Metric", "Value", "Started", "Duration", "Check"].map((h) => (
+                      <th
+                        key={h}
+                        className="px-4 py-2 text-left font-semibold uppercase tracking-wider"
+                        style={{ color: "#45464d" }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {alertLog.map((a) => {
+                    const duration = formatAlertDuration(a.triggered_at, a.resolved_at);
+                    return (
+                      <tr key={a.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                        <td className="px-4 py-3">
+                          <span
+                            className="px-2 py-0.5 rounded-lg font-semibold uppercase"
+                            style={{ background: "#f59e0b18", color: "#fbbf24" }}
+                          >
+                            {a.metric}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-bold tabular-nums" style={{ color: "#ffb4ab" }}>
+                          {formatAlarmValue(a.metric, a.value)}
+                        </td>
+                        <td className="px-4 py-3" style={{ color: "#909097" }}>
+                          {formatDt(a.triggered_at)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {duration !== null ? (
+                            <span style={{ color: "#c6c6cd" }}>{duration}</span>
+                          ) : (
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#ffb4ab" }} />
+                              <span style={{ color: "#ffb4ab" }}>Active</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => handleCheckAlert(a)}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+                            style={{
+                              background: "rgba(76,215,246,0.08)",
+                              border: "1px solid rgba(76,215,246,0.2)",
+                              color: "#4cd7f6",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <Search className="w-3 h-3" />
+                            Check
+                          </button>
                         </td>
                       </tr>
                     );
@@ -609,9 +645,19 @@ export default function PatientDetailPage() {
                 </tbody>
               </table>
             )}
-          </div>
+          </TableCard>
         </motion.div>
       </main>
+
+      {/* Clinical Copilot drawer — rendered outside main so it overlays everything */}
+      <ClinicalCopilot
+        isOpen={copilotOpen}
+        onClose={() => setCopilotOpen(false)}
+        context={copilotContext}
+        analysis={copilotAnalysis}
+        loading={copilotLoading}
+        error={copilotError}
+      />
     </div>
   );
 }

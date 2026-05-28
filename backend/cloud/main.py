@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-from routers import alerts, history, patients, sessions, stream, summary
+from routers import alerts, copilot, history, patients, sessions, stream, summary
 
 app = FastAPI(title="MediSync Cloud API")
 
@@ -27,6 +27,7 @@ app.include_router(history.router)
 app.include_router(sessions.router)
 app.include_router(alerts.router)
 app.include_router(summary.router)
+app.include_router(copilot.router)
 
 
 @app.get("/health")
