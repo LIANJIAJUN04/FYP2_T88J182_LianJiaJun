@@ -2,12 +2,12 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Activity, ArrowLeft, Droplets, HeartPulse, Thermometer,
-  Wifi, WifiOff, Clock, AlertTriangle, LogOut,
+  Wifi, WifiOff, Clock, AlertTriangle, LogOut, Search,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { getToken, clearToken } from "@/lib/auth";
@@ -21,6 +21,7 @@ import { AISummaryPanel } from "@/components/AISummaryPanel/AISummaryPanel";
 import { useCloudSSEStream } from "@/components/StatusCard/StatusCard.hooks";
 import type { Patient, Session, Alert, Reading } from "@/lib/api";
 import type { MLPrediction } from "@/components/MLBadge/MLBadge.types";
+import type { AlertHighlight } from "@/components/HistoryChart/HistoryChart.types";
 
 function formatDt(ts: string) {
   return new Date(ts).toLocaleString("en-GB", {
@@ -39,6 +40,24 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatAlarmValue(metric: string, value: number): string {
+  switch (metric) {
+    case "temperature": return `${value.toFixed(1)}°C`;
+    case "spo2":        return `${value.toFixed(1)}%`;
+    case "bpm":         return `${Math.round(value)} bpm`;
+    default:            return String(value);
+  }
+}
+
+function formatAlertDuration(triggered: string, resolved: string | null): string | null {
+  if (!resolved) return null; // caller renders "Active" pulsing indicator
+  const ms = new Date(resolved).getTime() - new Date(triggered).getTime();
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ${mins % 60}m`;
+}
+
 export default function PatientDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -51,8 +70,11 @@ export default function PatientDetailPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [histFrom, setHistFrom] = useState(todayStr());
   const [histTo, setHistTo] = useState(todayStr());
+  const [highlightWindow, setHighlightWindow] = useState<AlertHighlight | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const historyChartRef = useRef<HTMLDivElement>(null);
 
   const { latest, status, readings } = useCloudSSEStream(patientId);
   const isConnected = status !== "connecting";
@@ -77,19 +99,46 @@ export default function PatientDetailPage() {
     }
   }, [patientId, router]);
 
-  const loadHistory = useCallback(async () => {
+  // Core fetch — accepts explicit date params so it can be called from Check or the Fetch button
+  const doFetchHistory = useCallback(async (from: string, to: string) => {
     const token = getToken();
     if (!token) return;
     setHistoryLoading(true);
     try {
-      const data = await fetchHistory(patientId, token, histFrom, histTo);
+      const data = await fetchHistory(patientId, token, from, to);
       setHistory(data);
     } catch {
       setHistory([]);
     } finally {
       setHistoryLoading(false);
     }
-  }, [patientId, histFrom, histTo]);
+  }, [patientId]);
+
+  // Manual Fetch button — reads current date pickers and clears any active highlight
+  const loadHistory = useCallback(() => {
+    setHighlightWindow(null);
+    doFetchHistory(histFrom, histTo);
+  }, [doFetchHistory, histFrom, histTo]);
+
+  // Check button — zooms HistoryChart to the alert window and highlights it
+  const handleCheckAlert = useCallback((alert: Alert) => {
+    const startTs = new Date(alert.triggered_at).getTime();
+    // Active alerts: assume a 5-min inspection window; resolved alerts: use actual end time
+    const endTs = alert.resolved_at
+      ? new Date(alert.resolved_at).getTime()
+      : startTs + 5 * 60 * 1000;
+
+    const fromDate = new Date(startTs - 2 * 60 * 1000).toISOString().slice(0, 10);
+    const toDate   = new Date(endTs   + 2 * 60 * 1000).toISOString().slice(0, 10);
+
+    setHistFrom(fromDate);
+    setHistTo(toDate);
+    setHighlightWindow({ startTs, endTs, metric: alert.metric });
+
+    doFetchHistory(fromDate, toDate);
+
+    historyChartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [doFetchHistory]);
 
   useEffect(() => {
     loadPage();
@@ -209,7 +258,6 @@ export default function PatientDetailPage() {
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex items-center gap-4">
-                {/* Avatar */}
                 <div
                   className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl font-black"
                   style={{
@@ -262,7 +310,6 @@ export default function PatientDetailPage() {
                 </div>
               </div>
 
-              {/* Session + alert badges */}
               <div className="flex flex-wrap gap-2 items-center">
                 <span
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-semibold"
@@ -293,71 +340,74 @@ export default function PatientDetailPage() {
           </motion.div>
         )}
 
-        {/* Status + ML badge + gauges row */}
+        {/* Row 1: Patient Status (50%) | ML Detection (50%) */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
-          className="grid grid-cols-1 lg:grid-cols-4 gap-4"
+          className="grid grid-cols-1 sm:grid-cols-2 gap-4"
         >
-          {/* Left column: StatusCard + MLBadge stacked */}
-          <div className="lg:col-span-1 flex flex-col gap-4">
-            <StatusCard
-              status={status}
-              lastUpdate={latest ? formatTime(latest.ts) : undefined}
-            />
-            <MLBadge
-              prediction={(latest?.prediction ?? "normal") as MLPrediction}
-              confidence={latest?.confidence}
-            />
-          </div>
+          <StatusCard
+            status={status}
+            lastUpdate={latest ? formatTime(latest.ts) : undefined}
+          />
+          <MLBadge
+            prediction={(latest?.prediction ?? "normal") as MLPrediction}
+            confidence={latest?.confidence}
+          />
+        </motion.div>
 
-          {/* Gauge cards */}
-          <div className="lg:col-span-3 grid grid-cols-3 gap-4">
-            <GaugeCard
-              metric="spo2"
-              value={latest?.spo2 ?? null}
-              unit="%"
-              label="SpO₂"
-              min={80} max={100}
-              normalRange={[95, 100]}
-              warningRange={[90, 94]}
-              icon={<Droplets className="w-4 h-4" />}
-            />
-            <GaugeCard
-              metric="bpm"
-              value={latest?.bpm ?? null}
-              unit="bpm"
-              label="Heart Rate"
-              min={20} max={160}
-              normalRange={[60, 100]}
-              warningRange={[40, 130]}
-              icon={<HeartPulse className="w-4 h-4" />}
-            />
-            <GaugeCard
-              metric="temperature"
-              value={latest?.temperature ?? null}
-              unit="°C"
-              label="Temperature"
-              min={34} max={41}
-              normalRange={[36.1, 37.2]}
-              warningRange={[35, 38]}
-              icon={<Thermometer className="w-4 h-4" />}
-            />
-          </div>
+        {/* Row 2: SpO₂ (33%) | BPM (33%) | Temperature (33%) */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.18 }}
+          className="grid grid-cols-3 gap-4"
+        >
+          <GaugeCard
+            metric="spo2"
+            value={latest?.spo2 ?? null}
+            unit="%"
+            label="SpO₂"
+            min={80} max={100}
+            normalRange={[95, 100]}
+            warningRange={[90, 94]}
+            icon={<Droplets className="w-4 h-4" />}
+          />
+          <GaugeCard
+            metric="bpm"
+            value={latest?.bpm ?? null}
+            unit="bpm"
+            label="Heart Rate"
+            min={20} max={160}
+            normalRange={[60, 100]}
+            warningRange={[40, 130]}
+            icon={<HeartPulse className="w-4 h-4" />}
+          />
+          <GaugeCard
+            metric="temperature"
+            value={latest?.temperature ?? null}
+            unit="°C"
+            label="Temperature"
+            min={34} max={41}
+            normalRange={[36.1, 37.2]}
+            warningRange={[35, 38]}
+            icon={<Thermometer className="w-4 h-4" />}
+          />
         </motion.div>
 
         {/* Live chart */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
+          transition={{ duration: 0.4, delay: 0.22 }}
         >
           <LiveChart readings={readings} />
         </motion.div>
 
-        {/* History chart */}
+        {/* History chart — ref used by Check button to scroll here */}
         <motion.div
+          ref={historyChartRef}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.25 }}
@@ -370,146 +420,58 @@ export default function PatientDetailPage() {
             onFromChange={setHistFrom}
             onToChange={setHistTo}
             onFetch={loadHistory}
+            highlight={highlightWindow ?? undefined}
           />
         </motion.div>
 
-        {/* AI Summary panel */}
+        {/* Alert Log — full-width, linked to Health Trends via Check button */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.28 }}
+          className="rounded-2xl overflow-hidden"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}
         >
-          <AISummaryPanel patientId={patientId} token={token} />
-        </motion.div>
-
-        {/* Bottom two logs */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-4"
-        >
-          {/* Session log */}
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}
-          >
-            <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <Clock className="w-4 h-4" style={{ color: "#bec6e0" }} />
-              <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>Session History</h3>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full ml-auto"
-                style={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
-              >
-                {sessions.length}
-              </span>
-            </div>
-            <div className="overflow-y-auto max-h-72">
-              {sessions.length === 0 ? (
-                <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
-                  No sessions recorded.
-                </p>
-              ) : (
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                      {["Started", "Ended", "Duration"].map((h) => (
-                        <th
-                          key={h}
-                          className="px-5 py-2 text-left font-semibold uppercase tracking-wider"
-                          style={{ color: "#45464d" }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessions.map((s) => {
-                      const duration = s.ended_at
-                        ? (() => {
-                            const ms = new Date(s.ended_at).getTime() - new Date(s.started_at).getTime();
-                            const mins = Math.floor(ms / 60000);
-                            const hrs = Math.floor(mins / 60);
-                            return hrs > 0 ? `${hrs}h ${mins % 60}m` : `${mins}m`;
-                          })()
-                        : null;
-
-                      return (
-                        <tr
-                          key={s.id}
-                          style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
-                        >
-                          <td className="px-5 py-3" style={{ color: "#c6c6cd" }}>
-                            {formatDt(s.started_at)}
-                          </td>
-                          <td className="px-5 py-3">
-                            {s.ended_at ? (
-                              <span style={{ color: "#909097" }}>{formatDt(s.ended_at)}</span>
-                            ) : (
-                              <span
-                                className="flex items-center gap-1.5 text-xs font-semibold"
-                                style={{ color: "#4ade80" }}
-                              >
-                                <span className="w-1.5 h-1.5 rounded-full blink-dot" style={{ background: "#22c55e" }} />
-                                Active
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3" style={{ color: "#909097" }}>
-                            {duration ?? "—"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
+          <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <AlertTriangle className="w-4 h-4" style={{ color: "#f59e0b" }} />
+            <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>Alert Log</h3>
+            <span
+              className="text-xs px-2 py-0.5 rounded-full ml-auto"
+              style={
+                unresolvedCount > 0
+                  ? { background: "rgba(255,180,171,0.08)", color: "#ffb4ab" }
+                  : { background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }
+              }
+            >
+              {unresolvedCount > 0 ? `${unresolvedCount} unresolved` : "All clear"}
+            </span>
           </div>
-
-          {/* Alert log */}
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}
-          >
-            <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <AlertTriangle className="w-4 h-4" style={{ color: "#f59e0b" }} />
-              <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>Alert Log</h3>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full ml-auto"
-                style={
-                  unresolvedCount > 0
-                    ? { background: "rgba(255,180,171,0.08)", color: "#ffb4ab" }
-                    : { background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }
-                }
-              >
-                {unresolvedCount > 0 ? `${unresolvedCount} unresolved` : "All clear"}
-              </span>
-            </div>
-            <div className="overflow-y-auto max-h-72">
-              {alertLog.length === 0 ? (
-                <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
-                  No alerts recorded.
-                </p>
-              ) : (
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                      {["Metric", "Value", "Started", "Ended", "Status"].map((h) => (
-                        <th
-                          key={h}
-                          className="px-5 py-2 text-left font-semibold uppercase tracking-wider"
-                          style={{ color: "#45464d" }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alertLog.map((a) => (
+          <div className="overflow-y-auto max-h-72">
+            {alertLog.length === 0 ? (
+              <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
+                No alerts recorded.
+              </p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                    {["Metric", "Alarm Value", "Started", "Duration", "Check"].map((h) => (
+                      <th
+                        key={h}
+                        className="px-5 py-2 text-left font-semibold uppercase tracking-wider"
+                        style={{ color: "#45464d" }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {alertLog.map((a) => {
+                    const duration = formatAlertDuration(a.triggered_at, a.resolved_at);
+                    return (
                       <tr key={a.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                        {/* Metric */}
                         <td className="px-5 py-3">
                           <span
                             className="px-2 py-0.5 rounded-lg font-semibold uppercase"
@@ -518,50 +480,135 @@ export default function PatientDetailPage() {
                             {a.metric}
                           </span>
                         </td>
+                        {/* Alarm Value */}
                         <td className="px-5 py-3 font-bold tabular-nums" style={{ color: "#ffb4ab" }}>
-                          {typeof a.value === "number" ? a.value.toFixed(1) : a.value}
+                          {formatAlarmValue(a.metric, a.value)}
                         </td>
-                        {/* Started — when the alert was first triggered */}
+                        {/* Started */}
                         <td className="px-5 py-3" style={{ color: "#909097" }}>
                           {formatDt(a.triggered_at)}
                         </td>
-                        {/* Ended — resolved_at timestamp, or a pulsing dot if still active */}
+                        {/* Duration */}
                         <td className="px-5 py-3">
-                          {a.resolved_at ? (
-                            <span style={{ color: "#4ade80" }}>{formatDt(a.resolved_at)}</span>
+                          {duration !== null ? (
+                            <span style={{ color: "#c6c6cd" }}>{duration}</span>
                           ) : (
                             <span className="flex items-center gap-1.5">
                               <span
                                 className="w-1.5 h-1.5 rounded-full animate-pulse"
                                 style={{ background: "#ffb4ab" }}
                               />
-                              <span style={{ color: "#ffb4ab" }}>Ongoing</span>
+                              <span style={{ color: "#ffb4ab" }}>Active</span>
                             </span>
                           )}
                         </td>
+                        {/* Check — zooms Health Trends to this alert */}
                         <td className="px-5 py-3">
-                          {a.resolved_at ? (
-                            <span
-                              className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                              style={{ background: "#22c55e18", color: "#4ade80" }}
-                            >
-                              Resolved
-                            </span>
+                          <button
+                            onClick={() => handleCheckAlert(a)}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+                            style={{
+                              background: "rgba(76,215,246,0.08)",
+                              border: "1px solid rgba(76,215,246,0.2)",
+                              color: "#4cd7f6",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <Search className="w-3 h-3" />
+                            Check
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </motion.div>
+
+        {/* AI Summary panel */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.31 }}
+        >
+          <AISummaryPanel patientId={patientId} token={token} />
+        </motion.div>
+
+        {/* Session log — full-width */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.34 }}
+          className="rounded-2xl overflow-hidden"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(20px)" }}
+        >
+          <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <Clock className="w-4 h-4" style={{ color: "#bec6e0" }} />
+            <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>Session History</h3>
+            <span
+              className="text-xs px-2 py-0.5 rounded-full ml-auto"
+              style={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
+            >
+              {sessions.length}
+            </span>
+          </div>
+          <div className="overflow-y-auto max-h-72">
+            {sessions.length === 0 ? (
+              <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
+                No sessions recorded.
+              </p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                    {["Started", "Ended", "Duration"].map((h) => (
+                      <th
+                        key={h}
+                        className="px-5 py-2 text-left font-semibold uppercase tracking-wider"
+                        style={{ color: "#45464d" }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions.map((s) => {
+                    const duration = s.ended_at
+                      ? (() => {
+                          const ms = new Date(s.ended_at).getTime() - new Date(s.started_at).getTime();
+                          const mins = Math.floor(ms / 60000);
+                          const hrs = Math.floor(mins / 60);
+                          return hrs > 0 ? `${hrs}h ${mins % 60}m` : `${mins}m`;
+                        })()
+                      : null;
+
+                    return (
+                      <tr key={s.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                        <td className="px-5 py-3" style={{ color: "#c6c6cd" }}>
+                          {formatDt(s.started_at)}
+                        </td>
+                        <td className="px-5 py-3">
+                          {s.ended_at ? (
+                            <span style={{ color: "#909097" }}>{formatDt(s.ended_at)}</span>
                           ) : (
-                            <span
-                              className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                              style={{ background: "rgba(255,180,171,0.08)", color: "#ffb4ab" }}
-                            >
+                            <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "#4ade80" }}>
+                              <span className="w-1.5 h-1.5 rounded-full blink-dot" style={{ background: "#22c55e" }} />
                               Active
                             </span>
                           )}
                         </td>
+                        <td className="px-5 py-3" style={{ color: "#909097" }}>
+                          {duration ?? "—"}
+                        </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </motion.div>
       </main>
