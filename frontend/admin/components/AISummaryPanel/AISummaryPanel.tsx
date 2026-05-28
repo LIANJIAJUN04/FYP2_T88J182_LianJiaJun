@@ -83,7 +83,8 @@ export function AISummaryPanel({ patientId, token }: AISummaryPanelProps) {
 
       {/* Content area */}
       <AnimatePresence mode="wait">
-        {loading && (
+        {/* Spinner: only shown while waiting for the first token (no text yet) */}
+        {loading && !summary && (
           <motion.div
             key="loading"
             initial={{ opacity: 0 }}
@@ -115,7 +116,9 @@ export function AISummaryPanel({ patientId, token }: AISummaryPanelProps) {
           </motion.div>
         )}
 
-        {summary && !loading && (
+        {/* Summary renders as soon as the first chunk arrives — even while loading.
+            The blinking dot signals that more text is still on the way. */}
+        {summary && (
           <motion.div
             key="summary"
             initial={{ opacity: 0, y: 8 }}
@@ -123,22 +126,33 @@ export function AISummaryPanel({ patientId, token }: AISummaryPanelProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
           >
-            {/* Period badge */}
+            {/* Period badge + reading count (arrive via the meta SSE event) */}
             <div className="flex items-center gap-2 mb-4">
-              <span
-                className="text-xs px-2 py-0.5 rounded-full"
-                style={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
-              >
-                {period}
-              </span>
+              {period && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full"
+                  style={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
+                >
+                  {period}
+                </span>
+              )}
               {readingsCount !== null && (
                 <span className="text-xs" style={{ color: "#45464d" }}>
                   · {readingsCount} readings
                 </span>
               )}
+              {/* Streaming indicator: visible while text is still arriving */}
+              {loading && (
+                <motion.span
+                  animate={{ opacity: [1, 0.2, 1] }}
+                  transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style={{ background: "#4cd7f6" }}
+                />
+              )}
             </div>
 
-            {/* Summary text */}
+            {/* Summary text — updates in real time as chunks arrive */}
             <div
               className="rounded-xl px-5 py-4 text-sm leading-relaxed whitespace-pre-wrap mb-4"
               style={{
@@ -151,10 +165,11 @@ export function AISummaryPanel({ patientId, token }: AISummaryPanelProps) {
               {summary}
             </div>
 
-            {/* Disclaimer */}
-            <p className="text-xs" style={{ color: "#45464d" }}>
-              ⚠ AI-generated analysis. Not a substitute for clinical judgment.
-            </p>
+            {!loading && (
+              <p className="text-xs" style={{ color: "#45464d" }}>
+                ⚠ AI-generated analysis. Not a substitute for clinical judgment.
+              </p>
+            )}
           </motion.div>
         )}
 

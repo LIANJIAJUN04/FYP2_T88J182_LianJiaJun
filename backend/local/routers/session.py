@@ -36,10 +36,11 @@ async def login(body: LoginIn, request: Request):
 async def logout(request: Request):
     patient_id = request.app.state.active_patient_id
     if patient_id:
-        close_active_session(patient_id)
-    request.app.state.active_patient_id = None
+        close_active_session(patient_id, reason="manual_logout")
+    request.app.state.active_patient_id   = None
     request.app.state.active_patient_name = None
-    request.app.state.last_reading = None
+    request.app.state.last_reading        = None
+    request.app.state.last_reading_at     = None
     return {"status": "logged_out"}
 
 
