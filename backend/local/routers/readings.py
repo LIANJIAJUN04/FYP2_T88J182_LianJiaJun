@@ -136,6 +136,9 @@ async def receive_reading(body: ReadingIn, request: Request):
         ts=ts,
     )
 
+    # ── Stamp heartbeat for the disconnect watchdog ────────────────────────
+    request.app.state.last_reading_at = ts
+
     # ── Update in-memory SSE state ─────────────────────────────────────────
     request.app.state.last_reading = {
         "spo2": body.spo2,
