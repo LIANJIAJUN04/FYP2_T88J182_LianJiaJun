@@ -8,7 +8,7 @@
 
 ## Project Overview
 
-A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and temperature sensors is connected via USB to a bedside machine. Readings are written locally for near-zero latency bedside display, and synced asynchronously to the cloud for remote admin monitoring. Each patient has their own session and isolated reading history in InfluxDB via `patient_id` tagging.
+A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and temperature sensors transmits readings via WiFi using the MQTT protocol to a local Mosquitto broker on the bedside machine. Readings are written locally for low-latency bedside display, and synced asynchronously to the cloud for remote admin monitoring. Each patient has their own session and isolated reading history in InfluxDB via `patient_id` tagging.
 
 ---
 
@@ -16,8 +16,8 @@ A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and
 
 | | Bedside (Local) | Admin (Cloud) |
 |---|---|---|
-| Connection | USB to bedside laptop | Internet, anywhere |
-| Latency | ~1ms | 1–3s |
+| Connection | WiFi + MQTT to bedside machine | Internet, anywhere |
+| Latency | ~20ms | 1–3s |
 | Auth | Shared nurse password | Supabase Auth (email + password) |
 | Frontend | Next.js on localhost | Next.js on Vercel |
 | Reads from | Local InfluxDB | InfluxDB Cloud |
@@ -30,7 +30,8 @@ A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and
 | Layer | Tech | Where |
 |---|---|---|
 | Firmware | ESP32, Arduino framework | Device |
-| Serial bridge | Python (`serial_bridge.py`) | Bedside machine |
+| MQTT broker | Mosquitto (Docker) | Bedside machine (port 1883) |
+| MQTT bridge | Python (`mqtt_bridge.py`) | Bedside machine |
 | Local backend | FastAPI | Bedside machine (localhost:8000) |
 | Cloud backend | FastAPI | Railway |
 | Time-series (local) | InfluxDB via Docker | Bedside machine (localhost:8087) |
@@ -124,13 +125,13 @@ No way to reach `/dashboard` without an active patient. Direct URL access redire
 MediSync/
 ├── firmware/
 │   ├── main/
-│   │   ├── main.ino                 # Main loop — Serial JSON output, LED status
-│   │   ├── config.h                 # Pins, baud rate, timing
+│   │   ├── main.ino                 # Main loop — MQTT JSON publish, LED status
+│   │   ├── config.h                 # Pins, WiFi credentials, MQTT broker IP + topic
 │   │   └── sensors.h                # sensorsBegin/Update, readSpO2/BPM/Temperature
 │   ├── i2c_scan/
 │   │   ├── i2c_scan.ino             # Utility — scan I2C bus, verify 0x57/0x5A
 │   │   └── config.h                 # SDA/SCL pins
-│   └── serial_bridge.py             # Reads JSON from USB Serial, POSTs to FastAPI
+│   └── mqtt_bridge.py               # Subscribes to MQTT topic, POSTs to FastAPI
 │
 ├── backend/
 │   ├── local/                       # Runs on bedside machine
@@ -391,14 +392,30 @@ NEXT_PUBLIC_SUPABASE_URL=https://rzzxrlfgmkdoarglcpdw.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-### Serial Bridge (`firmware/serial_bridge.py`)
+### MQTT Bridge (`firmware/mqtt_bridge.py`)
 ```python
-BAUD_RATE     = 115200
+MQTT_BROKER   = "localhost"          # or bedside machine LAN IP
+MQTT_PORT     = 1883
+MQTT_TOPIC    = "medisync/readings"
 API_URL       = "http://localhost:8000/api/readings"
 DEVICE_SECRET = "esp32"
 DEVICE_ID     = "esp32-001"
 ```
 No config file needed — edit constants at the top of the script.
+
+### Firmware (`firmware/main/config.h`)
+```cpp
+// WiFi
+#define WIFI_SSID     "your-wifi-ssid"
+#define WIFI_PASSWORD "your-wifi-password"
+
+// MQTT
+#define MQTT_BROKER   "192.168.x.x"   // bedside machine LAN IP
+#define MQTT_PORT     1883
+#define MQTT_TOPIC    "medisync/readings"
+#define DEVICE_ID     "esp32-001"
+#define DEVICE_SECRET "esp32"
+```
 
 ---
 
@@ -558,12 +575,28 @@ services:
       - DOCKER_INFLUXDB_INIT_RETENTION=168h
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=medisync-local-token
 
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+
 volumes:
   influxdb_data:
+  mosquitto_data:
+```
+
+Mosquitto config (`mosquitto/config/mosquitto.conf`):
+```
+listener 1883
+allow_anonymous true
 ```
 
 Run: `docker compose up -d`
-UI: `http://localhost:8087` (host port 8087 — 8086 occupied by another project)
+InfluxDB UI: `http://localhost:8087` (host port 8087 — 8086 occupied by another project)
+MQTT broker: `localhost:1883` (anonymous access, LAN only)
 
 ---
 
@@ -812,31 +845,35 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 
 ---
 
-### Phase 8 — ESP32 Firmware ✅
+### Phase 8 — ESP32 Firmware ⏳
 - [x] Wire MAX30102 (I2C) and MLX90614ESF (I2C) to ESP32
 - [x] Install libraries: `ArduinoJson`, `SparkFun MAX3010x`, `Adafruit MLX90614`
 - [x] Implement `sensors.h` — `sensorsBegin()`, `sensorsUpdate()`, `readSpO2()`, `readBPM()`, `readTemperature()`
-- [x] Implement main loop every 1s — serialises JSON and writes to USB Serial
-- [x] Add `X-Device-Secret` header (sent by serial bridge)
-- [x] LED — green = OK (valid reading), red = error (invalid reading or sensor init failure)
-- [x] Temperature retry — 3 attempts on transient I2C NaN before returning NaN
 - [x] `i2c_scan` utility sketch — scan bus, print MAX30102 (0x57) and MLX90614 (0x5A)
-- [x] `serial_bridge.py` — auto-detects ESP32 USB port, forwards JSON lines to local FastAPI
-- [x] Flash, verify in Serial Monitor
-- [x] Confirm readings in local InfluxDB with correct `patient_id` tag and `status` field
+- [x] Temperature retry — 3 attempts on transient I2C NaN before returning NaN
+- [x] LED — green = OK (valid reading), red = error (sensor failure)
+- [ ] Install `PubSubClient` library for MQTT
+- [ ] Add WiFi credentials + MQTT broker IP to `firmware/main/config.h`
+- [ ] Implement WiFi connection with auto-reconnect in `main.ino`
+- [ ] Implement MQTT connection with auto-reconnect in `main.ino`
+- [ ] Implement main loop every 1s — serialise JSON and publish to MQTT topic `medisync/readings`
+- [ ] Include `device_secret` and `device_id` fields inside the JSON payload (MQTT has no HTTP headers)
+- [ ] Update LED logic — green = WiFi + MQTT + sensor OK, red = any failure
+- [ ] Add Mosquitto broker service to `docker-compose.yml` + `mosquitto/config/mosquitto.conf`
+- [ ] Write `firmware/mqtt_bridge.py` — subscribes to `medisync/readings`, POSTs each reading to local FastAPI
+- [ ] Flash, verify via MQTT broker logs and Serial Monitor
+- [ ] Confirm readings in local InfluxDB with correct `patient_id` tag and `status` field
 
-**Architecture note:** ESP32 sends readings over USB Serial as newline-delimited JSON. `serial_bridge.py` runs on the bedside machine, auto-detects the ESP32 port (CP2102/CH340/CH9102/FTDI), and POSTs each reading to `localhost:8000/api/readings`. This avoids WiFi credential management and is more reliable for a fixed bedside setup.
+**Architecture note:** ESP32 connects to the bedside WiFi network and publishes readings every 1s to a Mosquitto MQTT broker (Docker, port 1883) as JSON. `mqtt_bridge.py` subscribes to the topic and POSTs each message to `localhost:8000/api/readings`. MQTT was chosen to satisfy the FYP open-source pipeline requirement (O1/H1) and supports future multi-device expansion. WiFi MQTT latency is ~15–50ms — well within the ≤2s FYP requirement.
 
-**Serial bridge usage:**
+**MQTT bridge usage (once implemented):**
 ```bash
 cd firmware
-pip install pyserial requests
-python serial_bridge.py   # auto-detects ESP32 USB port
+pip install paho-mqtt requests
+python mqtt_bridge.py   # subscribes to medisync/readings on localhost:1883
 ```
 
-**Done when:** Bedside StatusCard and chart update every second with real sensor values.
-
-**Completed:** 2026-05-12 — USB Serial bridge approach instead of WiFi/HTTP on ESP32; 100-sample sliding window for SpO₂/BPM via SparkFun MAX3010x algorithm; MLX90614 object-temperature reads with 3-retry on NaN; LED status indicators on GPIO 25/26; `i2c_scan` sketch for hardware verification; `serial_bridge.py` with auto-port detection for CP2102/CH340/CH9102/FTDI USB chips.
+**Done when:** Bedside StatusCard and chart update every second with real sensor values via MQTT.
 
 ---
 
@@ -909,12 +946,12 @@ Graceful degradation: if `ml/*.joblib` files are missing, `prediction` defaults 
 ./start-bedside.sh
 
 # Manual
-docker compose up -d
+docker compose up -d          # starts InfluxDB + Mosquitto
 cd backend/local && uvicorn main:app --host 0.0.0.0 --port 8000
 cd frontend/bedside && npm run dev
 
-# Start serial bridge (after flashing ESP32)
-cd firmware && python serial_bridge.py
+# Start MQTT bridge (after flashing ESP32 and connecting to WiFi)
+cd firmware && python mqtt_bridge.py
 ```
 
 ### Railway (Cloud Backend)
@@ -942,7 +979,9 @@ cd firmware && python serial_bridge.py
 - SSE endpoints must set `Content-Type: text/event-stream` and disable response buffering
 - Never use `time.sleep()` in async FastAPI — always `asyncio.sleep()`
 - Both Next.js apps are fully independent — separate `package.json`, separate deploys
-- ESP32 sends data over USB Serial to `serial_bridge.py`, not directly via WiFi/HTTP
+- ESP32 sends data via WiFi to Mosquitto MQTT broker (Docker, port 1883); `mqtt_bridge.py` subscribes and POSTs to FastAPI — not USB Serial
+- MQTT topic is `medisync/readings`; `device_secret` is embedded in the JSON payload (MQTT has no HTTP headers)
+- Mosquitto runs in Docker alongside InfluxDB — `docker compose up -d` starts both
 - Local InfluxDB runs on host port **8087** (container port 8086) — UI at `http://localhost:8087`
 - InfluxDB Cloud free tier: 5MB/5min write limit, 30-day retention — sufficient for prototype
 - Nurse password is a single shared secret in `.env` — not per-nurse, not stored in DB
