@@ -29,16 +29,16 @@ function BubbleContent({ text }: { text: string }) {
   const lines = text.split("\n");
 
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-2">
       {lines.map((line, i) => {
         // Emoji section header: "📥 **What Happened**" etc.
         const emojiMatch = line.match(/^([📥🔍⚡])\s*\*\*(.+?)\*\*/);
         if (emojiMatch) {
           return (
-            <div key={i} className={`flex items-center gap-1.5 ${i > 0 ? "mt-4" : "mt-0"} mb-1`}>
-              <span className="text-sm leading-none">{emojiMatch[1]}</span>
+            <div key={i} className={`flex items-center gap-2 ${i > 0 ? "mt-5" : "mt-0"} mb-2`}>
+              <span className="text-base leading-none">{emojiMatch[1]}</span>
               <span
-                className="text-[10px] font-black uppercase tracking-[0.15em]"
+                className="text-sm font-black uppercase tracking-[0.12em]"
                 style={{ color: "#4cd7f6" }}
               >
                 {emojiMatch[2]}
@@ -50,26 +50,26 @@ function BubbleContent({ text }: { text: string }) {
         // Bullet: "• text"
         if (line.startsWith("• ") || line.startsWith("- ")) {
           return (
-            <div key={i} className="flex items-start gap-1.5 pl-0.5">
+            <div key={i} className="flex items-start gap-2 pl-4">
               <span
-                className="text-[10px] font-bold shrink-0 mt-0.5"
+                className="text-[15px] font-bold shrink-0 mt-0.5 leading-relaxed"
                 style={{ color: "#4cd7f6" }}
               >
                 •
               </span>
-              <span className="text-[11px] leading-[1.55]" style={{ color: "#c6c6cd" }}>
+              <span className="text-[15px] leading-relaxed" style={{ color: "#e4e2e4" }}>
                 {line.slice(2)}
               </span>
             </div>
           );
         }
 
-        // Blank line → small spacer
-        if (!line.trim()) return <div key={i} className="h-1.5" />;
+        // Blank line → spacer
+        if (!line.trim()) return <div key={i} className="h-2" />;
 
         // Regular paragraph
         return (
-          <p key={i} className="text-[11px] leading-[1.55]" style={{ color: "#bec6e0" }}>
+          <p key={i} className="text-[15px] leading-relaxed" style={{ color: "#dde2ef" }}>
             {line}
           </p>
         );
@@ -107,12 +107,12 @@ function AIBubble({ msg }: { msg: ChatMessage }) {
           }}
         >
           {msg.isError ? (
-            <p className="text-[11px]" style={{ color: "#f87171" }}>{msg.content}</p>
+            <p className="text-[15px] leading-relaxed" style={{ color: "#f87171" }}>{msg.content}</p>
           ) : (
             <BubbleContent text={msg.content} />
           )}
         </div>
-        <span className="text-[9px] pl-1" style={{ color: "#45464d" }}>
+        <span className="text-[11px] pl-1" style={{ color: "#45464d" }}>
           {formatTime(msg.timestamp)}
         </span>
       </div>
@@ -131,11 +131,11 @@ function UserBubble({ msg }: { msg: ChatMessage }) {
             border: "1px solid rgba(76,215,246,0.18)",
           }}
         >
-          <p className="text-[11px] leading-[1.55]" style={{ color: "#e4e2e4" }}>
+          <p className="text-[15px] leading-relaxed" style={{ color: "#f0f0f2" }}>
             {msg.content}
           </p>
         </div>
-        <span className="text-[9px] pr-1" style={{ color: "#45464d" }}>
+        <span className="text-[11px] pr-1" style={{ color: "#45464d" }}>
           {formatTime(msg.timestamp)}
         </span>
       </div>
@@ -191,7 +191,7 @@ function EmptyState() {
       >
         <Brain className="w-5 h-5" style={{ color: "#45464d" }} />
       </div>
-      <p className="text-[11px] text-center" style={{ color: "#45464d" }}>
+      <p className="text-sm text-center" style={{ color: "#45464d" }}>
         Click &ldquo;Check&rdquo; on an alert to begin a clinical consultation.
       </p>
     </div>
@@ -427,7 +427,7 @@ export function ClinicalCopilot({
                   }
                   disabled={isBusy || messages.length === 0}
                   rows={1}
-                  className="flex-1 resize-none bg-transparent text-xs outline-none leading-relaxed"
+                  className="flex-1 resize-none bg-transparent text-base outline-none leading-relaxed"
                   style={{
                     color: "#e4e2e4",
                     caretColor: "#4cd7f6",
@@ -463,7 +463,7 @@ export function ClinicalCopilot({
                 </button>
               </div>
 
-              <p className="text-[9px] text-center mt-1.5 tracking-wider" style={{ color: "#2a2a2e" }}>
+              <p className="text-[10px] text-center mt-1.5 tracking-wider" style={{ color: "#2a2a2e" }}>
                 Powered by claude-haiku-4-5 · Clinical decision support only
               </p>
             </div>
