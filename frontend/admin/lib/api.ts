@@ -58,6 +58,12 @@ export interface Reading {
   prediction: string;
   alert: boolean;
   ts: string;
+  // Per-metric anomaly flags emitted by the ML pipeline on newer records.
+  // Absent on readings that predate per-metric flag emission — consumers must
+  // check for their presence before using them and fall back to row-level flags.
+  is_spo2_anomalous?: boolean;
+  is_bpm_anomalous?: boolean;
+  is_temp_anomalous?: boolean;
 }
 
 export function fetchPatients(token: string) {
@@ -87,11 +93,33 @@ export function fetchSessions(patientId: string, token: string) {
   return apiFetch<Session[]>(`/api/patients/${patientId}/sessions`, token);
 }
 
-export function fetchHistory(patientId: string, token: string, from: string, to: string) {
-  return apiFetch<Reading[]>(
+export interface AbnormalSegment {
+  startTime: string;  // ISO string
+  endTime: string;    // ISO string
+  reason: string;     // e.g. "High Temp (38.7°C)"
+}
+
+export interface HistoryResponse {
+  readings: Reading[];
+  abnormalSegments: AbnormalSegment[];
+}
+
+// Backward-compatible: current backend returns Reading[]; upgraded backend returns HistoryResponse.
+export function fetchHistory(
+  patientId: string,
+  token: string,
+  from: string,
+  to: string,
+): Promise<HistoryResponse> {
+  return apiFetch<Reading[] | HistoryResponse>(
     `/api/patients/${patientId}/history?from=${from}&to=${to}`,
-    token
-  );
+    token,
+  ).then((data) => {
+    if (Array.isArray(data)) {
+      return { readings: data, abnormalSegments: [] };
+    }
+    return { readings: data.readings, abnormalSegments: data.abnormalSegments ?? [] };
+  });
 }
 
 export function getStreamUrl(patientId: string, token: string): string {
