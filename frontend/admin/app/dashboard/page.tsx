@@ -14,7 +14,7 @@ import { getToken, clearToken } from "@/lib/auth";
 import { fetchPatients, fetchAlerts, fetchSessions } from "@/lib/api";
 import { SummaryCard } from "@/components/SummaryCard/SummaryCard";
 import { PatientTable } from "@/components/PatientTable/PatientTable";
-import type { PatientRow } from "@/components/PatientTable/PatientTable.types";
+import type { PatientRow, FilterStatus } from "@/components/PatientTable/PatientTable.types";
 import type { Alert } from "@/lib/api";
 
 export default function DashboardPage() {
@@ -25,6 +25,8 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [adminEmail, setAdminEmail] = useState<string>("");
   const [loggingOut, setLoggingOut] = useState(false);
+  // Lifted from PatientTable so metrics cards react to the active/inactive filter
+  const [tableFilterStatus, setTableFilterStatus] = useState<FilterStatus>("all");
 
   const loadData = useCallback(async (isRefresh = false) => {
     const token = getToken();
@@ -82,6 +84,9 @@ export default function DashboardPage() {
     loadData();
   }, [loadData, router]);
 
+  // Named alias exposed so child components can trigger a full metrics re-fetch
+  const refreshDashboardMetrics = useCallback(() => loadData(true), [loadData]);
+
   const handleLogout = async () => {
     setLoggingOut(true);
     await getSupabase().auth.signOut();
@@ -89,14 +94,31 @@ export default function DashboardPage() {
     router.replace("/");
   };
 
-  // Derived summary stats
+  // Derived summary stats — Cards 3 & 4 are context-aware:
+  //   Live mode   (filterStatus = "active")   → only currently monitored patients
+  //   Archive mode (filterStatus = "inactive") → only inactive patients
+  //   All mode    (filterStatus = "all")       → entire patient roster
   const activeSessions = patients.filter((p) => p.isActive).length;
+  // Raw unresolved count kept for the navbar pulse badge
   const unresolvedAlerts = alerts.filter((a) => !a.resolved_at).length;
-  // Distinct patients with at least one unresolved alert
+
+  // Patient subset that matches the table's current filter
+  const contextPatients =
+    tableFilterStatus === "all"
+      ? patients
+      : patients.filter((p) =>
+          tableFilterStatus === "active" ? p.isActive : !p.isActive
+        );
+
+  // Card 3: distinct patients in the current context with ≥1 open alert
   const patientsRequiringAttention = new Set(
-    alerts.filter((a) => !a.resolved_at).map((a) => a.patient_id)
+    alerts
+      .filter((a) => !a.resolved_at)
+      .filter((a) => contextPatients.some((p) => p.id === a.patient_id))
+      .map((a) => a.patient_id)
   ).size;
-  // Distinct *active* patients with at least one unresolved alert
+
+  // Card 4: always live — distinct *active* patients with ≥1 open alert
   const criticalPatients = new Set(
     alerts
       .filter((a) => !a.resolved_at)
@@ -250,7 +272,13 @@ export default function DashboardPage() {
             value={patientsRequiringAttention}
             icon={<AlertTriangle className="w-4 h-4" />}
             color="#f59e0b"
-            description="Require attention"
+            description={
+              tableFilterStatus === "active"
+                ? "Active patients · live"
+                : tableFilterStatus === "inactive"
+                ? "Inactive patients · archive"
+                : "Require attention"
+            }
             loading={loading}
           />
           <SummaryCard
@@ -269,7 +297,12 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
         >
-          <PatientTable patients={patients} loading={loading} />
+          <PatientTable
+            patients={patients}
+            loading={loading}
+            filterStatus={tableFilterStatus}
+            onFilterStatusChange={setTableFilterStatus}
+          />
         </motion.div>
       </main>
     </div>

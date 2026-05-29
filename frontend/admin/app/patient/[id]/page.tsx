@@ -140,7 +140,7 @@ export default function PatientDetailPage() {
   const [copilotMessages, setCopilotMessages] = useState<ChatMessage[]>([]);
   const [copilotInitializing, setCopilotInitializing] = useState(false);
   const [copilotSending, setCopilotSending] = useState(false);
-  const [resolvingAll, setResolvingAll] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   // Stage-1 intermediate state: alert data fetched and ready, but drawer not yet open.
   // Populated by handleCheckAlert; consumed by handleMarkAreaClick.
@@ -191,22 +191,25 @@ export default function PatientDetailPage() {
     }
   }, [patientId]);
 
-  // Bulk-resolve: stamps resolved_at on every open alert for this patient.
-  // Optimistically updates local state so the table clears immediately.
-  const handleResolveAll = useCallback(async () => {
+  // All-clear: optimistically empties the alert log, calls the bulk-resolve API,
+  // then re-syncs from the server so resolved rows reappear with their timestamps.
+  const handleAllClear = useCallback(async () => {
     const token = getToken();
-    if (!token || resolvingAll) return;
-    setResolvingAll(true);
+    if (!token || isClearing) return;
+    setIsClearing(true);
+    setAlertLog([]);                          // optimistic: clear immediately
     try {
       await resolveAllAlerts(patientId, token);
-      const now = new Date().toISOString();
-      setAlertLog((prev) =>
-        prev.map((a) => (a.resolved_at ? a : { ...a, resolved_at: now })),
-      );
+      const fresh = await fetchAlerts(token);
+      setAlertLog(fresh.filter((a) => a.patient_id === patientId));
+    } catch {
+      // on error, restore authoritative server state
+      const saved = await fetchAlerts(token).catch(() => [] as Alert[]);
+      setAlertLog((saved as Alert[]).filter((a) => a.patient_id === patientId));
     } finally {
-      setResolvingAll(false);
+      setIsClearing(false);
     }
-  }, [patientId, resolvingAll]);
+  }, [patientId, isClearing]);
 
   // Manual Fetch button — reads current date pickers and clears any active highlight
   const loadHistory = useCallback(() => {
@@ -708,26 +711,42 @@ export default function PatientDetailPage() {
             icon={<AlertTriangle className="w-4 h-4" style={{ color: "#f59e0b" }} />}
             title="Alert Log"
             badge={
-              resolvingAll ? (
-                <>
+              <div className="flex items-center gap-2">
+                {unresolvedCount > 0 && (
                   <span
-                    className="inline-block w-2.5 h-2.5 rounded-full border border-current border-t-transparent animate-spin"
-                  />
-                  Resolving…
-                </>
-              ) : unresolvedCount > 0 ? (
-                `${unresolvedCount} unresolved`
-              ) : (
-                "All clear"
-              )
+                    className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                    style={{
+                      background: "rgba(255,180,171,0.08)",
+                      color: "#ffb4ab",
+                      border: "1px solid rgba(255,180,171,0.2)",
+                    }}
+                  >
+                    {unresolvedCount} unresolved
+                  </span>
+                )}
+                <button
+                  onClick={handleAllClear}
+                  disabled={isClearing}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all hover:bg-teal-500/20 active:scale-95"
+                  style={{
+                    color: "#2dd4bf",
+                    cursor: isClearing ? "default" : "pointer",
+                    background: "rgba(20,184,166,0.06)",
+                    border: "1px solid rgba(20,184,166,0.15)",
+                  }}
+                >
+                  {isClearing ? (
+                    <>
+                      <span className="inline-block w-2.5 h-2.5 rounded-full border border-current border-t-transparent animate-spin" />
+                      Clearing…
+                    </>
+                  ) : (
+                    "All clear"
+                  )}
+                </button>
+              </div>
             }
-            badgeStyle={
-              unresolvedCount > 0
-                ? { background: "rgba(255,180,171,0.08)", color: "#ffb4ab" }
-                : { background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }
-            }
-            onBadgeClick={unresolvedCount > 0 ? handleResolveAll : undefined}
-            badgeDisabled={resolvingAll}
+            badgeStyle={{ padding: 0, background: "transparent", border: "none" }}
           >
             {alertLog.length === 0 ? (
               <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
