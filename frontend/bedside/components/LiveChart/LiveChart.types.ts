@@ -4,6 +4,7 @@ export interface Reading {
   bpm: number;
   temperature: number;
   status: string;
+  alert: boolean;
 }
 
 export interface LiveChartProps {

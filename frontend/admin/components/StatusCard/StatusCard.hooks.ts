@@ -18,10 +18,16 @@ export interface StreamReading {
   ts: string;
 }
 
+// A reading is considered stale (device offline) when its timestamp is
+// more than 15 s behind wall-clock time. The cloud SSE re-sends the last
+// InfluxDB reading every 2 s, so a frozen ts advances the stale clock.
+const STALE_THRESHOLD_MS = 15_000;
+
 export function useCloudSSEStream(patientId: string) {
   const [latest, setLatest] = useState<StreamReading | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [readings, setReadings] = useState<StreamReading[]>([]);
+  const [isStale, setIsStale] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -37,6 +43,8 @@ export function useCloudSSEStream(patientId: string) {
       es.onmessage = (e) => {
         try {
           const data: StreamReading = JSON.parse(e.data);
+          const readingAge = Date.now() - new Date(data.ts).getTime();
+          setIsStale(readingAge > STALE_THRESHOLD_MS);
           setLatest(data);
           setStatus(data.status as Status);
           setReadings((prev) => [...prev, data].slice(-60));
@@ -56,5 +64,5 @@ export function useCloudSSEStream(patientId: string) {
     };
   }, [patientId]);
 
-  return { latest, status, readings };
+  return { latest, status, readings, isStale };
 }

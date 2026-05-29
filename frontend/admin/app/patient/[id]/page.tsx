@@ -151,7 +151,7 @@ export default function PatientDetailPage() {
 
   const historyChartRef = useRef<HTMLDivElement>(null);
 
-  const { latest, status, readings } = useCloudSSEStream(patientId);
+  const { latest, status, readings, isStale } = useCloudSSEStream(patientId);
   const isConnected = status !== "connecting";
 
   const loadPage = useCallback(async () => {
@@ -372,6 +372,65 @@ export default function PatientDetailPage() {
   useEffect(() => {
     loadPage();
   }, [loadPage]);
+
+  // Stale-aware session polling:
+  // • When the SSE stream reports stale data (device offline, ts frozen >15 s),
+  //   poll every 5 s so the badge flips as soon as the backend closes the session.
+  // • When the device is live, poll every 30 s as a safety net for missed
+  //   Supabase Realtime UPDATE events.
+  // The effect re-runs whenever isStale changes, clearing the old interval and
+  // starting a new one at the appropriate cadence.
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+    const interval = isStale ? 5_000 : 30_000;
+
+    // Immediate fetch whenever staleness transitions (stale→live or live→stale).
+    fetchSessions(patientId, token).then(setSessions).catch(() => {});
+
+    const id = setInterval(async () => {
+      try {
+        const sess = await fetchSessions(patientId, token);
+        setSessions(sess);
+      } catch {}
+    }, interval);
+    return () => clearInterval(id);
+  }, [isStale, patientId]);
+
+  // Supabase Realtime — mirror session row changes without a page refresh.
+  // When the backend closes the active session (device_disconnect / manual_logout /
+  // auto_timeout), Supabase fires an UPDATE event and we patch the local row so
+  // the "🟢 Active" badge transitions to the ended timestamp immediately.
+  //
+  // Prerequisites (one-time, Supabase dashboard or migration):
+  //   ALTER TABLE sessions REPLICA IDENTITY FULL;
+  //   ALTER PUBLICATION supabase_realtime ADD TABLE sessions;
+  // The SELECT RLS policy for `authenticated` role already exists.
+  useEffect(() => {
+    const supabase = getSupabase();
+    const channel = supabase
+      .channel(`sessions-live-${patientId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "sessions",
+          filter: `patient_id=eq.${patientId}`,
+        },
+        (payload) => {
+          const updated = payload.new as Session;
+          setSessions((prev) =>
+            prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s))
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [patientId]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
