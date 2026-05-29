@@ -392,7 +392,8 @@ export default function PatientDetailPage() {
 
   const token = getToken() ?? "";
   const activeSession = sessions.find((s) => !s.ended_at);
-  const unresolvedCount = alertLog.filter((a) => !a.resolved_at).length;
+  const activeAlerts = alertLog.filter((a) => !a.resolved_at);
+  const unresolvedCount = activeAlerts.length;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#131315" }}>
@@ -748,9 +749,9 @@ export default function PatientDetailPage() {
             }
             badgeStyle={{ padding: 0, background: "transparent", border: "none" }}
           >
-            {alertLog.length === 0 ? (
+            {activeAlerts.length === 0 ? (
               <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
-                No alerts recorded.
+                No active alerts.
               </p>
             ) : (
               <table className="w-full text-xs">
@@ -768,7 +769,7 @@ export default function PatientDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {alertLog.map((a) => {
+                  {activeAlerts.map((a) => {
                     const duration = formatAlertDuration(a.triggered_at, a.resolved_at);
                     return (
                       <tr key={a.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
