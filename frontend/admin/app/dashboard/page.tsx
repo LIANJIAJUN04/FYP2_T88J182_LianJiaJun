@@ -92,8 +92,16 @@ export default function DashboardPage() {
   // Derived summary stats
   const activeSessions = patients.filter((p) => p.isActive).length;
   const unresolvedAlerts = alerts.filter((a) => !a.resolved_at).length;
-  const criticalPatients = new Set(
+  // Distinct patients with at least one unresolved alert
+  const patientsRequiringAttention = new Set(
     alerts.filter((a) => !a.resolved_at).map((a) => a.patient_id)
+  ).size;
+  // Distinct *active* patients with at least one unresolved alert
+  const criticalPatients = new Set(
+    alerts
+      .filter((a) => !a.resolved_at)
+      .filter((a) => patients.find((p) => p.id === a.patient_id)?.isActive)
+      .map((a) => a.patient_id)
   ).size;
 
   return (
@@ -238,8 +246,8 @@ export default function DashboardPage() {
             loading={loading}
           />
           <SummaryCard
-            label="Unresolved Alerts"
-            value={unresolvedAlerts}
+            label="Patients Requiring Attention"
+            value={patientsRequiringAttention}
             icon={<AlertTriangle className="w-4 h-4" />}
             color="#f59e0b"
             description="Require attention"
@@ -250,7 +258,7 @@ export default function DashboardPage() {
             value={criticalPatients}
             icon={<HeartPulse className="w-4 h-4" />}
             color="#ef4444"
-            description="With active danger alerts"
+            description="Active sessions with open alerts"
             loading={loading}
           />
         </motion.div>
