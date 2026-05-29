@@ -14,5 +14,14 @@ services:
       - DOCKER_INFLUXDB_INIT_RETENTION=168h
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=medisync-local-token
 
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+
 volumes:
   influxdb_data:
+  mosquitto_data:

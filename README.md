@@ -43,10 +43,12 @@ An ESP32 with SpO₂, BPM, and temperature sensors transmits readings via WiFi u
 ```
 MediSync/
 ├── firmware/
-│   ├── main/               # Main sketch — USB serial JSON output (WiFi/MQTT firmware pending)
+│   ├── main/               # Main sketch — WiFi + MQTT + LWT (fill config.h credentials, then flash)
+│   │   ├── main.ino        # WiFi auto-reconnect, MQTT LWT keepalive=15 s, publishes every 1 s
+│   │   └── config.h        # WiFi SSID/password, MQTT broker IP, device credentials, LED pins
 │   ├── i2c_scan/           # Utility sketch — verify sensor wiring
-│   ├── serial_bridge.py    # Current transport — USB Serial → FastAPI; disconnect detection
-│   └── mqtt_bridge.py      # Phase 8 WiFi transport — LWT subscription + readings forward
+│   ├── serial_bridge.py    # Legacy transport — USB Serial → FastAPI (still works for dev/testing)
+│   └── mqtt_bridge.py      # WiFi transport bridge — LWT subscriber + readings forwarder
 ├── backend/
 │   ├── local/              # FastAPI — bedside machine (localhost:8000)
 │   │   ├── main.py         # App entry point, state, startup + heartbeat watchdog
@@ -94,7 +96,9 @@ MediSync/
 ├── supabase/
 │   └── migrations/
 │       ├── 20260511000000_initial_schema.sql    # patients, sessions, alerts
-│       └── 20260528000000_sessions_duration.sql # duration_seconds + closed_reason columns
+│       ├── 20260511000001_enable_rls.sql        # RLS policies — authenticated read access
+│       ├── 20260528000000_sessions_duration.sql # duration_seconds + closed_reason columns
+│       └── 20260529000000_sessions_realtime.sql # REPLICA IDENTITY FULL + realtime publication
 ├── docker-compose.yml      # Local InfluxDB + Mosquitto
 └── README.md
 ```
@@ -302,35 +306,32 @@ npm run dev
 
 Open `http://localhost:3001` (port 3000 may be occupied on some machines).
 
-### ESP32 — USB Serial (current)
+### ESP32 — WiFi MQTT (primary transport)
 
-The ESP32 currently outputs JSON over USB serial. The bridge reads it and forwards to FastAPI:
+The firmware uses WiFi + MQTT with a Last Will and Testament (LWT) so the broker automatically broadcasts an "offline" event if the device loses power — closing the session within ~22 s.
 
-```bash
-cd firmware
-pip install pyserial requests
-python serial_bridge.py   # auto-detects ESP32 COM port, POSTs to localhost:8000
-```
-
-The bridge detects disconnection via `SerialException` (USB pulled) and a 30-second idle timeout — both immediately call `POST /api/device/disconnect` to close the active session.
-
-To verify sensor wiring, flash `firmware/i2c_scan/i2c_scan.ino` and open the Serial Monitor — it should report MAX30102 at `0x57` and MLX90614 at `0x5A`.
-
-### ESP32 — WiFi MQTT (Phase 8, pending firmware flash)
-
-**1. Configure WiFi and MQTT credentials** in `firmware/main/config.h`:
+**1. Configure** `firmware/main/config.h` — fill in your real values:
 
 ```cpp
-#define WIFI_SSID     "your-wifi-ssid"
-#define WIFI_PASSWORD "your-wifi-password"
-#define MQTT_BROKER   "192.168.x.x"   // bedside machine IP on the same WiFi network
-#define MQTT_PORT     1883
-#define MQTT_TOPIC    "medisync/readings"
+#define WIFI_SSID      "your-wifi-ssid"
+#define WIFI_PASSWORD  "your-wifi-password"
+#define MQTT_BROKER    "192.168.x.x"   // bedside machine LAN IP (same WiFi network)
 ```
 
-**2. Flash** `firmware/main/main.ino` to the ESP32 (WiFi + MQTT + LWT code not yet added — see Phase 8 checklist in CLAUDE.md).
+**2. Install libraries** in Arduino IDE → Library Manager:
+- `PubSubClient` (Nick O'Leary)
+- `ArduinoJson`
+- `SparkFun MAX3010x Pulse and Proximity Sensor Library`
+- `Adafruit MLX90614 Library`
 
-**3. Start the MQTT bridge** (after `docker compose up -d` has started Mosquitto):
+**3. Flash** `firmware/main/main.ino` — board: **ESP32 Dev Module**, speed: 115200 baud. Watch the Serial Monitor for:
+```
+[wifi] Connected  IP=192.168.x.x
+[mqtt] Connecting to broker...ok
+[init] Ready — publishing to medisync/readings
+```
+
+**4. Start the MQTT bridge** (after `docker compose up -d` has started Mosquitto):
 
 ```bash
 cd firmware
@@ -338,7 +339,11 @@ pip install paho-mqtt requests
 python mqtt_bridge.py   # subscribes to medisync/readings + medisync/status (LWT)
 ```
 
-The bridge subscribes to the LWT topic `medisync/status` — when the ESP32 loses power the broker broadcasts `{"status":"offline"}` and the bridge immediately closes the session.
+The bridge subscribes to `medisync/status` — on abrupt power loss the broker broadcasts `{"status":"offline"}` (LWT) and the bridge immediately calls `POST /api/device/disconnect` to close the session.
+
+To verify sensor wiring before flashing, use `firmware/i2c_scan/i2c_scan.ino` — Serial Monitor should report MAX30102 at `0x57` and MLX90614 at `0x5A`.
+
+**Legacy: USB Serial** (`serial_bridge.py`) still works for development without WiFi — it auto-detects the ESP32 COM port and detects disconnection via `SerialException` (USB pull) and a 30-second idle timeout.
 
 ### Admin Frontend (local dev)
 
@@ -418,11 +423,12 @@ See `CLAUDE.md` for the full variable reference.
 | 5 | Cloud FastAPI backend | ✅ Done |
 | 6 | Bedside frontend | ✅ Done |
 | 7 | Admin frontend | ✅ Done |
-| 8 | ESP32 firmware — WiFi + MQTT | ⏳ Bridge done; firmware WiFi flash pending |
+| 8 | ESP32 firmware — WiFi + MQTT | ✅ Done — fill config.h credentials and flash |
 | 8.5 | Claude API CDSS — AI Summary + Clinical Copilot | ✅ Done |
 | 9 | ML anomaly detection | ✅ Done |
 | 10 | Polish & hardening | ✅ Done |
 | 11 | Session lifecycle management — automated termination | ✅ Done |
+| 12 | Admin live session badge — auto-refresh on device disconnect | ✅ Done |
 
 ---
 
@@ -431,8 +437,11 @@ See `CLAUDE.md` for the full variable reference.
 - ML artefacts (`ml/*.joblib`) are gitignored — retrain locally after cloning by re-running `ml/health_risk_ml.ipynb`
 - `app.state.active_patient_id` is in-memory — restarting local FastAPI requires the nurse to log in again
 - `status.py` is duplicated in local and cloud backends — keep them in sync
-- ESP32 currently sends readings via USB serial; `serial_bridge.py` forwards to FastAPI. WiFi MQTT firmware not yet flashed.
+- ESP32 firmware uses WiFi + MQTT with `keepalive=15 s` — LWT fires within ~22 s of abrupt power loss. Fill `config.h` credentials and flash `firmware/main/main.ino` to activate.
+- `serial_bridge.py` (USB serial) still works during development — disconnect detection via `SerialException` + 30-second idle timeout.
 - Session `closed_reason` values: `"manual_logout"` (nurse clicked logout) | `"device_disconnect"` (bridge detected hardware loss) | `"auto_timeout"` (5-min watchdog fallback)
-- The Phase 11 Supabase migration (`20260528000000_sessions_duration.sql`) must be run in the SQL editor before deploying the updated backend
+- Supabase migrations must be run in the SQL editor in order: `initial_schema` → `enable_rls` → `sessions_duration` → `sessions_realtime`
+- The `sessions_realtime` migration (`20260529000000_sessions_realtime.sql`) enables the Supabase Realtime subscription on the admin frontend so session rows update live when a device disconnects. The `ALTER PUBLICATION` line may error "already a member" if applied via the dashboard — safe to ignore; the `ALTER TABLE sessions REPLICA IDENTITY FULL` line is what matters.
+- The admin patient detail page auto-detects device offline via stale SSE data (`ts` frozen >15 s) and switches to 5 s session polling, flipping the "Session Active" badge to "No Active Session" within ~25 s of power-off — no page refresh required.
 - InfluxDB Cloud free tier: 5 MB/5 min write limit, 30-day retention
 - `ANTHROPIC_API_KEY` must be set in Railway for AI summary and Clinical Copilot — not needed locally

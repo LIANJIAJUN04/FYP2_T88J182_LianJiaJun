@@ -1,0 +1,26 @@
+#pragma once
+
+// ── WiFi ──────────────────────────────────────────────────────────────────────
+#define WIFI_SSID      "LIAN"
+#define WIFI_PASSWORD  "Jacky_04"
+
+// ── MQTT broker ───────────────────────────────────────────────────────────────
+// Set MQTT_BROKER to the LAN IP of the bedside machine running Mosquitto.
+// Find it with: ip addr (Linux) / ipconfig (Windows) / ifconfig (Mac)
+#define MQTT_BROKER    "10.235.22.181"
+#define MQTT_PORT      1883
+#define MQTT_TOPIC     "medisync/readings"   // ESP32 publishes readings here
+#define MQTT_STATUS    "medisync/status"     // LWT topic — broker publishes "offline" on abrupt loss
+#define DEVICE_ID      "esp32-001"
+#define DEVICE_SECRET  "esp32"
+
+// Broker fires the LWT after ~1.5 × keepalive seconds of silence.
+// 15 s → LWT within ~22 s of power loss. PubSubClient default (60 s) = ~90 s — too slow.
+#define MQTT_KEEPALIVE_S 15
+
+// ── Status LEDs ───────────────────────────────────────────────────────────────
+// Wire an external LED + 220 Ω resistor between each pin and GND.
+// Set to -1 to disable a colour (e.g. if your board only has one built-in LED).
+// Most ESP32 devboards: GPIO2 = built-in blue LED (use as GREEN proxy in dev).
+#define LED_GREEN 2    // WiFi + MQTT + sensor OK
+#define LED_RED   4    // any failure (WiFi down / MQTT down / sensor init failed)
