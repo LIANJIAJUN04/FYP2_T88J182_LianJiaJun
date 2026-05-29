@@ -902,7 +902,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 
 ---
 
-### Phase 8 — ESP32 Firmware ⏳
+### Phase 8 — ESP32 Firmware ✅
 - [x] Wire MAX30102 (I2C) and MLX90614ESF (I2C) to ESP32
 - [x] Install libraries: `ArduinoJson`, `SparkFun MAX3010x`, `Adafruit MLX90614`
 - [x] Implement `sensors.h` — `sensorsBegin()`, `sensorsUpdate()`, `readSpO2()`, `readBPM()`, `readTemperature()`
@@ -912,28 +912,35 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 - [x] USB Serial transport — `firmware/serial_bridge.py` reads JSON from COM port, POSTs to FastAPI
 - [x] Add Mosquitto broker service to `docker-compose.yml` + `mosquitto/config/mosquitto.conf`
 - [x] Write `firmware/mqtt_bridge.py` — subscribes to `medisync/readings` + `medisync/status` (LWT), POSTs to FastAPI
-- [ ] Install `PubSubClient` library for MQTT on ESP32
-- [ ] Add WiFi credentials + MQTT broker IP to `firmware/main/config.h`
-- [ ] Implement WiFi connection with auto-reconnect in `main.ino`
-- [ ] Implement MQTT connection with LWT on `medisync/status` topic in `main.ino`
-- [ ] Implement main loop every 1s — serialise JSON and publish to `medisync/readings`
-- [ ] Include `device_secret` and `device_id` fields inside the JSON payload (MQTT has no HTTP headers)
-- [ ] Update LED logic — green = WiFi + MQTT + sensor OK, red = any failure
+- [x] Install `PubSubClient` library for MQTT on ESP32
+- [x] Add WiFi credentials + MQTT broker IP to `firmware/main/config.h`
+- [x] Implement WiFi connection with auto-reconnect in `main.ino`
+- [x] Implement MQTT connection with LWT on `medisync/status` topic in `main.ino`
+- [x] Implement main loop every 1s — serialise JSON and publish to `medisync/readings`
+- [x] Include `device_secret` and `device_id` fields inside the JSON payload (MQTT has no HTTP headers)
+- [x] Update LED logic — green = WiFi + MQTT + sensor OK, red = any failure
 - [ ] Flash, verify via MQTT broker logs and Serial Monitor
 - [ ] Confirm readings in local InfluxDB with correct `patient_id` tag and `status` field
 
-**Current transport (USB Serial):** `firmware/serial_bridge.py` reads JSON lines from the ESP32 over USB, POSTs to `localhost:8000/api/readings`. Detects disconnect via `SerialException` (USB pull) and 30-second idle timeout — both call `POST /api/device/disconnect` to close the session immediately.
+**Transport (WiFi MQTT):** ESP32 connects to Mosquitto on the bedside LAN and publishes readings every 1s. LWT configured on `medisync/status` with `keepalive=15` — broker broadcasts `{"status":"offline"}` within ~22 s of abrupt power loss. `mqtt_bridge.py` catches this and calls `/api/device/disconnect`. MQTT was chosen for the FYP open-source pipeline requirement (O1/H1) and latency ~15–50ms.
 
-**Target transport (WiFi MQTT):** ESP32 connects to Mosquitto on the bedside LAN and publishes readings every 1s. LWT configured on `medisync/status` — broker broadcasts `{"status":"offline"}` automatically if keepalive expires. `mqtt_bridge.py` catches this and calls `/api/device/disconnect`. MQTT was chosen for the FYP open-source pipeline requirement (O1/H1) and latency ~15–50ms.
+**Flashing steps:**
+1. Open `firmware/main/main.ino` in Arduino IDE
+2. Fill in `WIFI_SSID`, `WIFI_PASSWORD`, and `MQTT_BROKER` (bedside machine LAN IP) in `config.h`
+3. Install libraries via Library Manager: `PubSubClient` (Nick O'Leary), `ArduinoJson`, `SparkFun MAX3010x`, `Adafruit MLX90614`
+4. Select board: **ESP32 Dev Module** — Tools → Board → esp32
+5. Flash (`Ctrl+U`) — watch Serial Monitor at 115200 baud for `[wifi] Connected` then `[mqtt] ok`
+6. Start `docker compose up -d` (Mosquitto) and `python firmware/mqtt_bridge.py` on the bedside machine
+7. Verify readings in local InfluxDB and bedside dashboard
 
-**MQTT bridge usage (after WiFi firmware is flashed):**
+**MQTT bridge usage:**
 ```bash
 cd firmware
 pip install paho-mqtt requests
 python mqtt_bridge.py   # subscribes to medisync/readings + medisync/status on localhost:1883
 ```
 
-**Done when:** Bedside StatusCard and chart update every second with real sensor values via MQTT, and unplugging power closes the session within ~15s via LWT.
+**Done when:** Bedside StatusCard and chart update every second with real sensor values via MQTT, and unplugging power closes the session within ~22 s via LWT.
 
 ---
 
@@ -1038,6 +1045,30 @@ Graceful degradation: if `ml/*.joblib` files are missing, `prediction` defaults 
 
 ---
 
+### Phase 12 — Admin Live Session Badge ✅
+- [x] Add `isStale: boolean` to `useCloudSSEStream` return value (`frontend/admin/components/StatusCard/StatusCard.hooks.ts`)
+  - `STALE_THRESHOLD_MS = 15_000` — reading is stale when `Date.now() - new Date(data.ts).getTime() > 15_000`
+  - Cloud SSE re-sends the last InfluxDB reading every 2 s; a frozen `ts` advances the stale clock
+  - `isStale` starts `false`; set on every SSE message event (not on keep-alive comments)
+- [x] Replace simple 30 s poll in `patient/[id]/page.tsx` with stale-aware session polling:
+  - `isStale = false` (device live) → `fetchSessions` every **30 s** — safety net for missed Supabase Realtime events
+  - `isStale = true` (device offline) → immediate `fetchSessions` + repeat every **5 s** until session close confirmed
+  - Effect re-runs on `isStale` or `patientId` change: old interval cleared, new interval started, immediate fetch triggered
+- [x] Retain existing Supabase Realtime `postgres_changes` subscription as instant primary path — fires the moment `ended_at` is set if the subscription is active
+
+**Timeline after ESP32 powers off (MQTT path):**
+```
+T+0s   Device loses power
+T+15s  SSE ts frozen >15 s → isStale = true → immediate fetchSessions + 5 s poll starts
+T+22s  Mosquitto LWT fires → mqtt_bridge.py calls POST /api/device/disconnect → ended_at set in Supabase
+T+25s  Next 5 s poll → fetchSessions returns closed session → badge flips "No Active Session"
+```
+Total latency: ~25 s from power-off to badge update. No manual page refresh required.
+
+**Completed:** 2026-05-29 — `isStale` in `useCloudSSEStream`; stale-aware polling in `PatientDetailPage`; Supabase Realtime (`sessions_realtime` migration) confirmed applied in Supabase dashboard.
+
+---
+
 ## Deployment Reference
 
 ### Bedside Machine
@@ -1106,3 +1137,6 @@ cd firmware && python mqtt_bridge.py
 - Dashboard metric philosophy: all counts are **distinct patient counts**, not raw alert row counts. Card 3 = `COUNT(DISTINCT patient_id) WHERE resolved_at IS NULL` filtered to context. Card 4 = same but additionally filtered to `isActive`. The navbar pulse badge uses the raw unresolved row count for the "X alerts" label.
 - `open_session()` always calls `close_active_session()` first — this is the ghost session guard; do not remove it
 - The Phase 11 migration (`20260528000000_sessions_duration.sql`) must be run in the Supabase SQL editor before deploying the new `supabase_client.py`
+- `useCloudSSEStream` returns `isStale: boolean` — `true` when the latest reading's `ts` is >15 s behind wall-clock. The cloud SSE re-sends the last InfluxDB reading every 2 s, so a frozen `ts` is the reliable offline signal.
+- Admin `patient/[id]/page.tsx` uses stale-aware session polling: 5 s when `isStale = true` (aggressive catch after device disconnect), 30 s when `isStale = false` (cheap safety net during normal operation). Do not collapse back to a single fixed-interval poll.
+- The `sessions_realtime` migration (`20260529000000_sessions_realtime.sql`) must be run once in the Supabase SQL editor. The `ALTER PUBLICATION` line may error with "already a member" if it was applied via the dashboard — that is safe to ignore. The `ALTER TABLE sessions REPLICA IDENTITY FULL` line is the important one.
