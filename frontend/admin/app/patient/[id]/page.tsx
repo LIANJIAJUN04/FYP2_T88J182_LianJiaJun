@@ -23,7 +23,7 @@ import { HistoryChart } from "@/components/HistoryChart/HistoryChart";
 import { AISummaryPanel } from "@/components/AISummaryPanel/AISummaryPanel";
 import { ClinicalCopilot } from "@/components/ClinicalCopilot/ClinicalCopilot";
 import { useCloudSSEStream } from "@/components/StatusCard/StatusCard.hooks";
-import type { Patient, Session, Alert, Reading } from "@/lib/api";
+import type { Patient, Session, Alert, Reading, AbnormalSegment } from "@/lib/api";
 import type { MLPrediction } from "@/components/MLBadge/MLBadge.types";
 import type { AlertHighlight } from "@/components/HistoryChart/HistoryChart.types";
 import type { ClinicalContext, ChatMessage, CopilotReadingPoint } from "@/components/ClinicalCopilot/ClinicalCopilot.types";
@@ -127,6 +127,7 @@ export default function PatientDetailPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [alertLog, setAlertLog] = useState<Alert[]>([]);
   const [history, setHistory] = useState<Reading[]>([]);
+  const [historySegments, setHistorySegments] = useState<AbnormalSegment[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [histFrom, setHistFrom] = useState(todayStr());
   const [histTo, setHistTo] = useState(todayStr());
@@ -174,17 +175,20 @@ export default function PatientDetailPage() {
     }
   }, [patientId, router]);
 
-  // Returns the fetched data so callers (Check button) can use it immediately
+  // Returns the fetched readings so callers (Check button) can use them immediately.
+  // Segments are set as a side effect so HistoryChart can render anomaly bands.
   const doFetchHistory = useCallback(async (from: string, to: string): Promise<Reading[]> => {
     const token = getToken();
     if (!token) return [];
     setHistoryLoading(true);
     try {
-      const data = await fetchHistory(patientId, token, from, to);
-      setHistory(data);
-      return data;
+      const { readings, abnormalSegments } = await fetchHistory(patientId, token, from, to);
+      setHistory(readings);
+      setHistorySegments(abnormalSegments);
+      return readings;
     } catch {
       setHistory([]);
+      setHistorySegments([]);
       return [];
     } finally {
       setHistoryLoading(false);
@@ -467,7 +471,7 @@ export default function PatientDetailPage() {
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="sticky top-0 z-50 flex items-center justify-between px-6 py-4"
+        className="sticky top-0 z-50 flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4"
         style={{
           borderBottom: "1px solid rgba(255,255,255,0.06)",
           background: "rgba(19,19,21,0.9)",
@@ -678,6 +682,7 @@ export default function PatientDetailPage() {
           transition={{ duration: 0.4, delay: 0.25 }}
         >
           <HistoryChart
+            patientId={patientId}
             readings={history}
             loading={historyLoading}
             from={histFrom}
@@ -687,6 +692,7 @@ export default function PatientDetailPage() {
             onFetch={loadHistory}
             highlight={highlightWindow ?? undefined}
             onMarkAreaClick={pendingAlert ? handleMarkAreaClick : undefined}
+            abnormalSegments={historySegments}
           />
         </motion.div>
 
