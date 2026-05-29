@@ -58,6 +58,12 @@ export interface Reading {
   prediction: string;
   alert: boolean;
   ts: string;
+  // Per-metric anomaly flags emitted by the ML pipeline on newer records.
+  // Absent on readings that predate per-metric flag emission — consumers must
+  // check for their presence before using them and fall back to row-level flags.
+  is_spo2_anomalous?: boolean;
+  is_bpm_anomalous?: boolean;
+  is_temp_anomalous?: boolean;
 }
 
 export function fetchPatients(token: string) {
@@ -90,7 +96,7 @@ export function fetchSessions(patientId: string, token: string) {
 export interface AbnormalSegment {
   startTime: string;  // ISO string
   endTime: string;    // ISO string
-  reason: string;     // e.g. "Abnormal SpO2 Drop (<95%)"
+  reason: string;     // e.g. "High Temp (38.7°C)"
 }
 
 export interface HistoryResponse {
@@ -98,7 +104,7 @@ export interface HistoryResponse {
   abnormalSegments: AbnormalSegment[];
 }
 
-// Backward-compatible: current backend returns Reading[]; new backend returns HistoryResponse.
+// Backward-compatible: current backend returns Reading[]; upgraded backend returns HistoryResponse.
 export function fetchHistory(
   patientId: string,
   token: string,

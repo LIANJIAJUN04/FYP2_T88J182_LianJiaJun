@@ -142,6 +142,7 @@ export default function PatientDetailPage() {
   const [copilotInitializing, setCopilotInitializing] = useState(false);
   const [copilotSending, setCopilotSending] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   // Stage-1 intermediate state: alert data fetched and ready, but drawer not yet open.
   // Populated by handleCheckAlert; consumed by handleMarkAreaClick.
@@ -176,7 +177,7 @@ export default function PatientDetailPage() {
   }, [patientId, router]);
 
   // Returns the fetched readings so callers (Check button) can use them immediately.
-  // Segments are set as a side effect so HistoryChart can render anomaly bands.
+  // historySegments is set as a side effect — HistoryChart renders the anomaly bands.
   const doFetchHistory = useCallback(async (from: string, to: string): Promise<Reading[]> => {
     const token = getToken();
     if (!token) return [];
@@ -215,9 +216,11 @@ export default function PatientDetailPage() {
     }
   }, [patientId, isClearing]);
 
-  // Manual Fetch button — reads current date pickers and clears any active highlight
+  // Manual Fetch button — pre-flight reset clears ALL single-audit state before
+  // entering global browse mode so Track B (XGBoost bands) renders unobstructed.
   const loadHistory = useCallback(() => {
-    setHighlightWindow(null);
+    setHighlightWindow(null); // clears Track A — activates Track B
+    setPendingAlert(null);    // no stale markArea click handler on the new canvas
     doFetchHistory(histFrom, histTo);
   }, [doFetchHistory, histFrom, histTo]);
 
@@ -253,6 +256,73 @@ export default function PatientDetailPage() {
 
     setPendingAlert({ alert, readingsSlice });
   }, [doFetchHistory]);
+
+  // Segment click — clinician clicks an anomaly band directly on the chart.
+  // Skips Stage 1 (no Supabase alert needed); builds context from the loaded
+  // history slice and opens the ClinicalCopilot drawer immediately.
+  const handleSegmentClick = useCallback(async (seg: AbnormalSegment) => {
+    const startTs = new Date(seg.startTime).getTime();
+    const endTs   = new Date(seg.endTime).getTime();
+
+    const slice = history.filter((r) => {
+      const ts = new Date(r.ts).getTime();
+      return ts >= startTs && ts <= endTs;
+    });
+
+    const readingsSlice: CopilotReadingPoint[] = slice.map((r) => ({
+      ts: r.ts, spo2: r.spo2, bpm: r.bpm, temperature: r.temperature,
+    }));
+
+    // Infer primary metric from the segment's human-readable reason label
+    const reason = seg.reason.toLowerCase();
+    const metric: "spo2" | "bpm" | "temperature" =
+      reason.includes("temp") ? "temperature"
+      : reason.includes("bpm") || reason.includes("brady") || reason.includes("tachy") ? "bpm"
+      : "spo2";
+
+    const firstReading = slice[0] ?? null;
+    const metricValue: number = firstReading ? firstReading[metric] : 0;
+
+    setCopilotMessages([]);
+    setCopilotContext({
+      alertId: `seg-${seg.startTime}`,
+      metric,
+      value: metricValue,
+      triggeredAt: seg.startTime,
+      resolvedAt: seg.endTime,
+      readingsSlice,
+    });
+    setCopilotOpen(true);
+    setCopilotInitializing(true);
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error("Session expired");
+      const result = await fetchCopilotAnalysis(token, {
+        metric,
+        value: metricValue,
+        triggered_at: seg.startTime,
+        resolved_at: seg.endTime,
+        readings_slice: readingsSlice,
+      });
+      setCopilotMessages([{
+        id: crypto.randomUUID(),
+        role: "ai",
+        content: result.analysis,
+        timestamp: new Date(),
+      }]);
+    } catch (err) {
+      setCopilotMessages([{
+        id: crypto.randomUUID(),
+        role: "ai",
+        content: err instanceof Error ? err.message : "Failed to generate analysis.",
+        timestamp: new Date(),
+        isError: true,
+      }]);
+    } finally {
+      setCopilotInitializing(false);
+    }
+  }, [history]);
 
   // Stage 2 — markArea click: open copilot drawer and trigger AI analysis.
   // Only fires after Stage 1 has populated pendingAlert.
@@ -683,6 +753,7 @@ export default function PatientDetailPage() {
         >
           <HistoryChart
             patientId={patientId}
+            patient={patient ?? undefined}
             readings={history}
             loading={historyLoading}
             from={histFrom}
@@ -692,6 +763,7 @@ export default function PatientDetailPage() {
             onFetch={loadHistory}
             highlight={highlightWindow ?? undefined}
             onMarkAreaClick={pendingAlert ? handleMarkAreaClick : undefined}
+            onSegmentClick={handleSegmentClick}
             abnormalSegments={historySegments}
           />
         </motion.div>
@@ -791,6 +863,18 @@ export default function PatientDetailPage() {
                   </span>
                 )}
                 <button
+                  onClick={() => setHistoryModalOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all hover:bg-violet-500/20 active:scale-95"
+                  style={{
+                    color: "#a78bfa",
+                    cursor: "pointer",
+                    background: "rgba(139,92,246,0.06)",
+                    border: "1px solid rgba(139,92,246,0.2)",
+                  }}
+                >
+                  History
+                </button>
+                <button
                   onClick={handleAllClear}
                   disabled={isClearing}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all hover:bg-teal-500/20 active:scale-95"
@@ -886,6 +970,219 @@ export default function PatientDetailPage() {
           </TableCard>
         </motion.div>
       </main>
+
+      {/* Alert History Modal */}
+      {historyModalOpen && (() => {
+        const allHistoricalAlerts = [...alertLog].sort(
+          (a, b) => new Date(b.triggered_at).getTime() - new Date(a.triggered_at).getTime(),
+        );
+        const dangerReadings = history.filter((r) => r.alert || r.status === "danger");
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0"
+              style={{ background: "rgba(0,0,0,0.72)", backdropFilter: "blur(4px)" }}
+              onClick={() => setHistoryModalOpen(false)}
+            />
+            {/* Panel */}
+            <div
+              className="relative z-10 rounded-2xl overflow-hidden flex flex-col w-full max-w-2xl"
+              style={{
+                background: "#18181b",
+                border: "1px solid rgba(255,255,255,0.1)",
+                maxHeight: "80vh",
+                boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+              }}
+            >
+              {/* Modal header */}
+              <div
+                className="px-5 py-4 flex items-center justify-between shrink-0"
+                style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" style={{ color: "#a78bfa" }} />
+                  <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>
+                    Alert History
+                  </h3>
+                  {patient && (
+                    <span className="text-xs" style={{ color: "#909097" }}>
+                      — {patient.name}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setHistoryModalOpen(false)}
+                  className="text-xs px-2 py-1 rounded-lg transition-colors hover:bg-white/10"
+                  style={{ color: "#909097" }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Modal body */}
+              <div className="overflow-y-auto flex-1 p-5 space-y-6">
+
+                {/* Section 1: All Supabase alerts (full history) */}
+                <div>
+                  <p
+                    className="text-xs font-semibold uppercase tracking-wider mb-3"
+                    style={{ color: "#45464d" }}
+                  >
+                    Recorded Alerts ({allHistoricalAlerts.length})
+                  </p>
+                  {allHistoricalAlerts.length === 0 ? (
+                    <p className="text-xs text-center py-4" style={{ color: "#45464d" }}>
+                      No recorded alerts for this patient.
+                    </p>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                          {["Metric", "Value", "Triggered", "Duration", "Check"].map((h) => (
+                            <th
+                              key={h}
+                              className="pb-2 text-left font-semibold uppercase tracking-wider"
+                              style={{ color: "#45464d" }}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allHistoricalAlerts.map((a) => {
+                          const dur = formatAlertDuration(a.triggered_at, a.resolved_at);
+                          return (
+                            <tr
+                              key={a.id}
+                              style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+                            >
+                              <td className="py-2 pr-3">
+                                <span
+                                  className="px-2 py-0.5 rounded font-semibold uppercase"
+                                  style={{ background: "#f59e0b18", color: "#fbbf24" }}
+                                >
+                                  {a.metric}
+                                </span>
+                              </td>
+                              <td
+                                className="py-2 pr-3 font-bold tabular-nums"
+                                style={{ color: "#ffb4ab" }}
+                              >
+                                {formatAlarmValue(a.metric, a.value)}
+                              </td>
+                              <td className="py-2 pr-3" style={{ color: "#909097" }}>
+                                {formatDt(a.triggered_at)}
+                              </td>
+                              <td className="py-2 pr-3" style={{ color: "#c6c6cd" }}>
+                                {dur ?? "—"}
+                              </td>
+                              <td className="py-2">
+                                <button
+                                  onClick={() => {
+                                    setHistoryModalOpen(false);
+                                    handleCheckAlert(a);
+                                  }}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:opacity-80"
+                                  style={{
+                                    background: "rgba(76,215,246,0.08)",
+                                    border: "1px solid rgba(76,215,246,0.2)",
+                                    color: "#4cd7f6",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <Search className="w-3 h-3" />
+                                  Check
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* Section 2: Critical readings from the currently loaded history range */}
+                {dangerReadings.length > 0 && (
+                  <div>
+                    <p
+                      className="text-xs font-semibold uppercase tracking-wider mb-3"
+                      style={{ color: "#45464d" }}
+                    >
+                      Critical Readings — {histFrom} to {histTo} ({dangerReadings.length})
+                    </p>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                          {["Time", "SpO₂", "BPM", "Temp", "Status"].map((h) => (
+                            <th
+                              key={h}
+                              className="pb-2 text-left font-semibold uppercase tracking-wider"
+                              style={{ color: "#45464d" }}
+                            >
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dangerReadings.map((r, i) => (
+                          <tr
+                            key={i}
+                            style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}
+                          >
+                            <td className="py-2 pr-3" style={{ color: "#909097" }}>
+                              {formatTime(r.ts)}
+                            </td>
+                            <td
+                              className="py-2 pr-3 tabular-nums font-semibold"
+                              style={{ color: r.spo2 < 95 ? "#f87171" : "#c6c6cd" }}
+                            >
+                              {r.spo2.toFixed(1)}%
+                            </td>
+                            <td
+                              className="py-2 pr-3 tabular-nums font-semibold"
+                              style={{ color: r.bpm < 60 || r.bpm > 100 ? "#f87171" : "#c6c6cd" }}
+                            >
+                              {Math.round(r.bpm)}
+                            </td>
+                            <td
+                              className="py-2 pr-3 tabular-nums font-semibold"
+                              style={{ color: r.temperature > 37.5 ? "#f87171" : "#c6c6cd" }}
+                            >
+                              {r.temperature.toFixed(1)}°C
+                            </td>
+                            <td className="py-2">
+                              <span
+                                className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase"
+                                style={
+                                  r.status === "danger"
+                                    ? { background: "rgba(239,68,68,0.12)", color: "#f87171" }
+                                    : { background: "rgba(251,191,36,0.1)", color: "#fbbf24" }
+                                }
+                              >
+                                {r.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {allHistoricalAlerts.length === 0 && dangerReadings.length === 0 && (
+                  <p className="text-center text-xs py-8" style={{ color: "#45464d" }}>
+                    No alert history found for this patient.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Clinical Copilot chatbox — rendered outside main so it overlays everything */}
       <ClinicalCopilot

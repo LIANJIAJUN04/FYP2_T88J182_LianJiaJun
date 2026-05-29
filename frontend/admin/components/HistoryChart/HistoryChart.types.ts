@@ -1,4 +1,4 @@
-import type { Reading, AbnormalSegment } from "@/lib/api";
+import type { Reading, AbnormalSegment, Patient } from "@/lib/api";
 
 export type { AbnormalSegment };
 
@@ -10,6 +10,7 @@ export interface AlertHighlight {
 
 export interface HistoryChartProps {
   patientId: string;
+  patient?: Patient;        // for Excel report header metadata
   readings: Reading[];
   loading: boolean;
   from: string;
@@ -19,5 +20,10 @@ export interface HistoryChartProps {
   onFetch: () => void;
   highlight?: AlertHighlight;
   onMarkAreaClick?: () => void;
+  // Called when a clinician clicks an anomaly segment band on the chart.
+  // Receives the segment so the caller can open ClinicalCopilot with context.
+  onSegmentClick?: (seg: AbnormalSegment) => void;
+  // Optional: backend-supplied segments. Falls back to client-side derivation from
+  // alert/status fields when omitted or empty.
   abnormalSegments?: AbnormalSegment[];
 }
