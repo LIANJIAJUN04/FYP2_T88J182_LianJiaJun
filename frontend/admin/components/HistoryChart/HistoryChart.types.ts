@@ -15,4 +15,5 @@ export interface HistoryChartProps {
   onToChange: (v: string) => void;
   onFetch: () => void;
   highlight?: AlertHighlight;
+  onMarkAreaClick?: () => void;
 }

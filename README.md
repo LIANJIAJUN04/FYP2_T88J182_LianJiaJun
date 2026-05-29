@@ -43,54 +43,59 @@ An ESP32 with SpO₂, BPM, and temperature sensors transmits readings via WiFi u
 ```
 MediSync/
 ├── firmware/
-│   ├── main/               # Main sketch — WiFi + MQTT publish + LED status
+│   ├── main/               # Main sketch — USB serial JSON output (WiFi/MQTT firmware pending)
 │   ├── i2c_scan/           # Utility sketch — verify sensor wiring
-│   └── mqtt_bridge.py      # Subscribes to MQTT topic, POSTs to local FastAPI
+│   ├── serial_bridge.py    # Current transport — USB Serial → FastAPI; disconnect detection
+│   └── mqtt_bridge.py      # Phase 8 WiFi transport — LWT subscription + readings forward
 ├── backend/
 │   ├── local/              # FastAPI — bedside machine (localhost:8000)
-│   │   ├── main.py         # App entry point, state, startup
+│   │   ├── main.py         # App entry point, state, startup + heartbeat watchdog
 │   │   ├── status.py       # Rule-based get_status()
 │   │   ├── database.py     # Local InfluxDB write client
-│   │   ├── supabase_client.py  # Patient + session ops
-│   │   ├── sync.py         # Async queue + cloud sync worker
+│   │   ├── supabase_client.py  # Patient + session ops; ghost-session prevention + duration tracking
+│   │   ├── sync.py         # Async queue + cloud sync worker (SQLite-backed)
 │   │   ├── ml/
 │   │   │   ├── predict.py  # load_model() + run_inference() — XGBoost anomaly detection
 │   │   │   └── __init__.py
 │   │   ├── routers/
 │   │   │   ├── patients.py # POST /api/patients
 │   │   │   ├── session.py  # login / logout / active
-│   │   │   ├── readings.py # POST /api/readings (runs ML inference)
-│   │   │   └── stream.py   # GET /api/stream (SSE)
+│   │   │   ├── readings.py # POST /api/readings (runs ML inference, stamps last_reading_at)
+│   │   │   ├── stream.py   # GET /api/stream (SSE)
+│   │   │   └── device.py   # POST /api/device/disconnect (called by bridge on hardware loss)
 │   │   └── requirements.txt
-│   └── cloud/              # FastAPI — Railway (localhost:8001 for dev)
+│   └── cloud/              # FastAPI — Railway
 │       ├── main.py         # App entry point, CORS
 │       ├── status.py       # Same rule-based get_status()
 │       ├── database.py     # InfluxDB Cloud read client + Supabase client
 │       ├── auth.py         # Supabase Auth JWT middleware (require_auth)
-│       ├── claude_service.py  # Claude API client + generate_summary()
-│       ├── Procfile        # Railway start command
+│       ├── claude_service.py  # Claude API — stream_generate_summary, analyze_alert_event, stream_chat_followup
 │       ├── routers/
 │       │   ├── patients.py # GET /api/patients, GET /api/patients/:id
 │       │   ├── stream.py   # GET /api/patients/:id/stream (SSE)
 │       │   ├── history.py  # GET /api/patients/:id/history
 │       │   ├── sessions.py # GET /api/patients/:id/sessions
 │       │   ├── alerts.py   # GET /api/alerts
-│       │   └── summary.py  # GET /api/patients/:id/summary (AI Health Summary)
+│       │   ├── summary.py  # GET /api/patients/:id/summary (streaming SSE)
+│       │   └── copilot.py  # POST /api/copilot/analyze + /api/copilot/chat (SSE)
 │       └── requirements.txt
 ├── frontend/
-│   ├── bedside/            # Next.js — localhost
+│   ├── bedside/            # Next.js — localhost:3001
 │   └── admin/              # Next.js — Vercel
-├── ML/                     # Anomaly detection training pipeline
-│   ├── health_risk_ml.ipynb           # 18-section training notebook (XGBoost, LightGBM, CatBoost, MLP, RF)
-│   ├── health_risk_model.joblib       # Saved XGBoost model (gitignored)
-│   ├── health_risk_scaler.joblib      # StandardScaler (fit on train set only, gitignored)
-│   ├── health_risk_label_encoder.joblib  # LabelEncoder — High Risk / Low Risk (gitignored)
-│   ├── model_metadata.json            # Audit trail + performance numbers
-│   ├── ml.md                          # Pipeline documentation
-│   └── raw/                           # Training datasets (gitignored)
+│       └── components/
+│           ├── AISummaryPanel/    # Streaming AI Health Summary
+│           └── ClinicalCopilot/   # Alert analysis chatbox — streaming multi-turn CDSS drawer
+├── ml/                     # Anomaly detection training pipeline
+│   ├── health_risk_ml.ipynb           # 18-section training notebook
+│   ├── health_risk_model.joblib       # Trained XGBoost model (gitignored)
+│   ├── health_risk_scaler.joblib      # StandardScaler (gitignored)
+│   ├── health_risk_label_encoder.joblib  # LabelEncoder (gitignored)
+│   └── model_metadata.json            # Audit trail + performance numbers
 ├── supabase/
-│   └── migrations/         # SQL migration files (run in Supabase SQL editor)
-├── docker-compose.yml      # Local InfluxDB
+│   └── migrations/
+│       ├── 20260511000000_initial_schema.sql    # patients, sessions, alerts
+│       └── 20260528000000_sessions_duration.sql # duration_seconds + closed_reason columns
+├── docker-compose.yml      # Local InfluxDB + Mosquitto
 └── README.md
 ```
 
@@ -98,24 +103,28 @@ MediSync/
 
 ## Patient Flow (Bedside)
 
-1. Nurse opens `localhost:3000`
+1. Nurse opens `localhost:3001`
 2. Registers new patient or logs in existing patient via IC number + shared nurse password
 3. Session opens in Supabase, `active_patient_id` set in FastAPI memory
 4. Dashboard shows live StatusCard, gauge cards (SpO₂, BPM, Temp), and scrolling chart
-5. Nurse logs out — session closes, active patient cleared
+5. Nurse logs out — session closes with `closed_reason = "manual_logout"` and `duration_seconds` recorded
+
+**Automated session termination:** If the ESP32 loses power or disconnects, the bridge detects it and calls `POST /api/device/disconnect`, closing the session immediately with `closed_reason = "device_disconnect"`. A 5-minute heartbeat watchdog in FastAPI catches cases where the bridge itself crashes.
 
 ## Admin Flow (Cloud)
 
 1. Admin logs in via Supabase Auth at the Vercel URL
 2. Dashboard shows summary cards and full patient table
 3. Click **View** on any patient to see live SSE stream, history chart, session log, and alert log
-4. Select a time range (1h / 6h / 24h / 7d) and click **Generate Summary** for an AI clinical narrative
+4. Select a time range (1h / 6h / 24h / 7d) and click **Generate Summary** for a streaming AI clinical narrative
+5. Click **Check** on any alert row — the chart zooms to the alert window (Stage 1). Click the red zone in the chart to open the **Clinical AI Copilot** drawer for a per-alert analysis (Stage 2)
+6. Click the **"X unresolved"** badge in the Alert Log header to bulk-resolve all open alerts in a single operation (audit trail preserved — rows are soft-resolved, never deleted)
 
 ---
 
 ## AI Health Summary
 
-The admin patient detail page includes an on-demand **AI Health Summary** powered by the Claude API (`claude-haiku-4-5`). Clinicians select a time range, click **Generate Summary**, and receive a structured clinical narrative covering:
+The admin patient detail page includes an on-demand **AI Health Summary** powered by the Claude API (`claude-haiku-4-5`). Clinicians select a time range, click **Generate Summary**, and receive a structured clinical narrative that streams in token-by-token covering:
 
 - **Overall patient status** during the period
 - **SpO₂ findings** and clinical implications
@@ -123,9 +132,38 @@ The admin patient detail page includes an on-demand **AI Health Summary** powere
 - **Temperature findings** and any concern
 - **Recommended Attention Points** — 2–4 actionable items
 
-Pre-computed per-metric stats (min/max/avg, warning/danger reading counts) are sent to the model rather than raw data. The summary includes a disclaimer that it is AI-generated and not a substitute for clinical judgment.
+Pre-computed per-metric stats (min/max/avg, warning/danger reading counts) are sent to the model rather than raw data. The period badge and reading count appear immediately from the SSE `meta` event before the first Claude token arrives.
 
-API endpoint: `GET /api/patients/:id/summary?range=1h|6h|24h|7d` (auth required, returns 422 if fewer than 2 readings in the window).
+API endpoint: `GET /api/patients/:id/summary?range=1h|6h|24h|7d` — SSE stream, auth required. Returns 422 if fewer than 2 readings in the window.
+
+---
+
+## Clinical AI Copilot
+
+Each alert row in the admin patient detail page has a **Check** button. The interaction is a deliberate two-stage flow to avoid cognitive overload when chart context and the AI drawer open simultaneously.
+
+**Stage 1 — Chart focus (on "Check" click):**
+- The history chart scrolls into view and zooms to the alert window.
+- A red **"⚠ Abnormal Detection"** markArea band overlays the chart at the exact alert timestamps.
+- The copilot drawer does **not** open yet. History data and the readings slice are pre-fetched in the background.
+- The chart badge reads **"Alert zone · Click to analyze"** — hovering the red zone shows a pointer cursor.
+
+**Stage 2 — Copilot open (on markArea click):**
+- Clicking the red zone opens the **Clinical AI Copilot** sliding drawer and triggers AI analysis.
+
+**Initial analysis** (buffered JSON): A structured three-section clinical report:
+- 📥 **What Happened** — exact metric, value, timestamp, and reading pattern
+- 🔍 **Root Cause Hypothesis** — physiological anomaly vs sensor artifact, cross-metric correlations
+- ⚡ **Recommended Next Steps** — specific numeric thresholds and monitoring instructions
+
+**Follow-up chat** (streaming SSE): Clinicians can ask open-ended questions about the alert. Responses stream token-by-token with full conversation history. The system prompt is cached so repeated turns within a session cost minimal input tokens.
+
+**Bulk alert resolution:** The "X unresolved" badge in the Alert Log header is a clickable button. Clicking it calls `PUT /api/alerts/resolve-all/{patient_id}`, which stamps `resolved_at = now()` on every open alert for the patient in a single query. No rows are deleted — the full alert history is preserved as a medical audit trail. The frontend optimistically clears the unresolved count immediately without requiring a page refresh.
+
+API endpoints:
+- `POST /api/copilot/analyze` — buffered JSON (validation required for structured rendering)
+- `POST /api/copilot/chat` — SSE stream with `X-Accel-Buffering: no` for Railway nginx
+- `PUT /api/alerts/resolve-all/{patient_id}` — bulk soft-resolve; returns `{ status, resolved_count }`
 
 ---
 
@@ -133,12 +171,12 @@ API endpoint: `GET /api/patients/:id/summary?range=1h|6h|24h|7d` (auth required,
 
 The local backend runs an XGBoost classifier on every reading to detect subtle physiological patterns that fall within technically normal thresholds — the kind rule-based alerts miss.
 
-| | Rule-based (StatusCard) | ML (AlertBadge / MLBadge) |
-|---|---|---|
-| Signal | Known dangerous thresholds | Learned patterns from 200k+ readings |
-| Example caught | SpO₂ = 88% → DANGER | SpO₂ fluctuating abnormally fast at 95% |
-| Frontend | StatusCard (green / amber / red) | AlertBadge (bedside) · MLBadge (admin) |
-| Fallback | Always available | Defaults to "normal" if model not loaded |
+| | Rule-based (StatusCard) | ML (AlertBadge / MLBadge) | AI Summary | Clinical Copilot |
+|---|---|---|---|---|
+| Signal | Known dangerous thresholds | Learned patterns from 200k+ readings | Macro trends over time | Per-alert root cause |
+| Example | SpO₂ = 88% → DANGER | SpO₂ fluctuating fast at 95% | HR + temp elevated for 6h | 8-min temp ramp = physiological event |
+| Frontend | StatusCard | AlertBadge (bedside) · MLBadge (admin) | AISummaryPanel | ClinicalCopilot drawer |
+| Trigger | Every reading | Every reading | Clinician clicks Generate | Clinician clicks Check |
 
 **Model:** XGBoost, trained on `human_vital_signs_dataset_2024.csv` (200,020 rows), validated externally on a separate hospital dataset (domain-shift test).
 
@@ -166,7 +204,7 @@ Danger state pulses red on the StatusCard. A separate ML anomaly detection layer
 
 ---
 
-## ML Anomaly Detection
+## ML Anomaly Detection — Model Detail
 
 An XGBoost classifier (Phase 9) runs alongside the rule-based engine on every reading. It detects subtle stress patterns that fall within normal thresholds — e.g. SpO₂ fluctuating abnormally fast at 95%.
 
@@ -247,7 +285,21 @@ npm run dev
 
 Open `http://localhost:3001` (port 3000 may be occupied on some machines).
 
-### ESP32 MQTT Setup
+### ESP32 — USB Serial (current)
+
+The ESP32 currently outputs JSON over USB serial. The bridge reads it and forwards to FastAPI:
+
+```bash
+cd firmware
+pip install pyserial requests
+python serial_bridge.py   # auto-detects ESP32 COM port, POSTs to localhost:8000
+```
+
+The bridge detects disconnection via `SerialException` (USB pulled) and a 30-second idle timeout — both immediately call `POST /api/device/disconnect` to close the active session.
+
+To verify sensor wiring, flash `firmware/i2c_scan/i2c_scan.ino` and open the Serial Monitor — it should report MAX30102 at `0x57` and MLX90614 at `0x5A`.
+
+### ESP32 — WiFi MQTT (Phase 8, pending firmware flash)
 
 **1. Configure WiFi and MQTT credentials** in `firmware/main/config.h`:
 
@@ -259,19 +311,17 @@ Open `http://localhost:3001` (port 3000 may be occupied on some machines).
 #define MQTT_TOPIC    "medisync/readings"
 ```
 
-**2. Flash** `firmware/main/main.ino` to the ESP32. The ESP32 will connect to WiFi and publish readings every 1s to the MQTT topic.
+**2. Flash** `firmware/main/main.ino` to the ESP32 (WiFi + MQTT + LWT code not yet added — see Phase 8 checklist in CLAUDE.md).
 
 **3. Start the MQTT bridge** (after `docker compose up -d` has started Mosquitto):
 
 ```bash
 cd firmware
 pip install paho-mqtt requests
-python mqtt_bridge.py   # subscribes to medisync/readings, POSTs to FastAPI
+python mqtt_bridge.py   # subscribes to medisync/readings + medisync/status (LWT)
 ```
 
-The bridge subscribes to the MQTT topic on `localhost:1883` and forwards each reading to `localhost:8000/api/readings`. The local backend must be running first.
-
-To verify sensor wiring before flashing the main sketch, flash `firmware/i2c_scan/i2c_scan.ino` and open the Serial Monitor — it should report MAX30102 at `0x57` and MLX90614 at `0x5A`.
+The bridge subscribes to the LWT topic `medisync/status` — when the ESP32 loses power the broker broadcasts `{"status":"offline"}` and the bridge immediately closes the session.
 
 ### Admin Frontend (local dev)
 
@@ -351,10 +401,11 @@ See `CLAUDE.md` for the full variable reference.
 | 5 | Cloud FastAPI backend | ✅ Done |
 | 6 | Bedside frontend | ✅ Done |
 | 7 | Admin frontend | ✅ Done |
-| 8 | ESP32 firmware — WiFi + MQTT | ⏳ In Progress |
-| 8.5 | Claude API AI Health Summary | ✅ Done |
+| 8 | ESP32 firmware — WiFi + MQTT | ⏳ Bridge done; firmware WiFi flash pending |
+| 8.5 | Claude API CDSS — AI Summary + Clinical Copilot | ✅ Done |
 | 9 | ML anomaly detection | ✅ Done |
 | 10 | Polish & hardening | ✅ Done |
+| 11 | Session lifecycle management — automated termination | ✅ Done |
 
 ---
 
@@ -363,6 +414,8 @@ See `CLAUDE.md` for the full variable reference.
 - ML artefacts (`ml/*.joblib`) are gitignored — retrain locally after cloning by re-running `ml/health_risk_ml.ipynb`
 - `app.state.active_patient_id` is in-memory — restarting local FastAPI requires the nurse to log in again
 - `status.py` is duplicated in local and cloud backends — keep them in sync
-- ESP32 sends readings via WiFi to Mosquitto MQTT broker; `mqtt_bridge.py` subscribes and forwards to FastAPI
+- ESP32 currently sends readings via USB serial; `serial_bridge.py` forwards to FastAPI. WiFi MQTT firmware not yet flashed.
+- Session `closed_reason` values: `"manual_logout"` (nurse clicked logout) | `"device_disconnect"` (bridge detected hardware loss) | `"auto_timeout"` (5-min watchdog fallback)
+- The Phase 11 Supabase migration (`20260528000000_sessions_duration.sql`) must be run in the SQL editor before deploying the updated backend
 - InfluxDB Cloud free tier: 5 MB/5 min write limit, 30-day retention
-- `ANTHROPIC_API_KEY` must be set in Railway for the AI summary endpoint — it is not needed locally
+- `ANTHROPIC_API_KEY` must be set in Railway for AI summary and Clinical Copilot — not needed locally
