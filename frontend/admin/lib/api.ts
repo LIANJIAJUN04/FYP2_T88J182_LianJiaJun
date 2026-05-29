@@ -72,6 +72,17 @@ export function fetchAlerts(token: string) {
   return apiFetch<Alert[]>("/api/alerts", token);
 }
 
+export interface ResolveAllResult {
+  status: string;
+  resolved_count: number;
+}
+
+export function resolveAllAlerts(patientId: string, token: string) {
+  return apiFetch<ResolveAllResult>(`/api/alerts/resolve-all/${patientId}`, token, {
+    method: "PUT",
+  });
+}
+
 export function fetchSessions(patientId: string, token: string) {
   return apiFetch<Session[]>(`/api/patients/${patientId}/sessions`, token);
 }

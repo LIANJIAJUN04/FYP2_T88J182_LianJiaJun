@@ -13,7 +13,7 @@ import { getSupabase } from "@/lib/supabase";
 import { getToken, clearToken } from "@/lib/auth";
 import {
   fetchPatient, fetchSessions, fetchAlerts, fetchHistory,
-  fetchCopilotAnalysis, streamCopilotChat,
+  fetchCopilotAnalysis, streamCopilotChat, resolveAllAlerts,
 } from "@/lib/api";
 import { StatusCard } from "@/components/StatusCard/StatusCard";
 import { MLBadge } from "@/components/MLBadge/MLBadge";
@@ -26,7 +26,7 @@ import { useCloudSSEStream } from "@/components/StatusCard/StatusCard.hooks";
 import type { Patient, Session, Alert, Reading } from "@/lib/api";
 import type { MLPrediction } from "@/components/MLBadge/MLBadge.types";
 import type { AlertHighlight } from "@/components/HistoryChart/HistoryChart.types";
-import type { ClinicalContext, ChatMessage } from "@/components/ClinicalCopilot/ClinicalCopilot.types";
+import type { ClinicalContext, ChatMessage, CopilotReadingPoint } from "@/components/ClinicalCopilot/ClinicalCopilot.types";
 
 function formatDt(ts: string) {
   return new Date(ts).toLocaleString("en-GB", {
@@ -65,14 +65,17 @@ function formatAlertDuration(triggered: string, resolved: string | null): string
 
 // ── Card wrapper shared by Session History and Alert Log ──────────────────────
 function TableCard({
-  icon, title, badge, badgeStyle, children,
+  icon, title, badge, badgeStyle, onBadgeClick, badgeDisabled, children,
 }: {
   icon: React.ReactNode;
   title: string;
   badge: React.ReactNode;
   badgeStyle?: React.CSSProperties;
+  onBadgeClick?: () => void;
+  badgeDisabled?: boolean;
   children: React.ReactNode;
 }) {
+  const badgeClass = "text-xs px-2 py-0.5 rounded-full ml-auto flex items-center gap-1.5";
   return (
     <div
       className="rounded-2xl overflow-hidden flex flex-col"
@@ -88,9 +91,25 @@ function TableCard({
       >
         {icon}
         <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>{title}</h3>
-        <span className="text-xs px-2 py-0.5 rounded-full ml-auto" style={badgeStyle}>
-          {badge}
-        </span>
+        {onBadgeClick ? (
+          <button
+            onClick={onBadgeClick}
+            disabled={badgeDisabled}
+            className={`${badgeClass} transition-opacity hover:opacity-80`}
+            style={{
+              ...badgeStyle,
+              cursor: badgeDisabled ? "not-allowed" : "pointer",
+              opacity: badgeDisabled ? 0.6 : 1,
+              border: "none",
+            }}
+          >
+            {badge}
+          </button>
+        ) : (
+          <span className={badgeClass} style={badgeStyle}>
+            {badge}
+          </span>
+        )}
       </div>
       <div className="overflow-y-auto" style={{ maxHeight: 288 }}>
         {children}
@@ -121,6 +140,14 @@ export default function PatientDetailPage() {
   const [copilotMessages, setCopilotMessages] = useState<ChatMessage[]>([]);
   const [copilotInitializing, setCopilotInitializing] = useState(false);
   const [copilotSending, setCopilotSending] = useState(false);
+  const [resolvingAll, setResolvingAll] = useState(false);
+
+  // Stage-1 intermediate state: alert data fetched and ready, but drawer not yet open.
+  // Populated by handleCheckAlert; consumed by handleMarkAreaClick.
+  const [pendingAlert, setPendingAlert] = useState<{
+    alert: Alert;
+    readingsSlice: CopilotReadingPoint[];
+  } | null>(null);
 
   const historyChartRef = useRef<HTMLDivElement>(null);
 
@@ -164,13 +191,31 @@ export default function PatientDetailPage() {
     }
   }, [patientId]);
 
+  // Bulk-resolve: stamps resolved_at on every open alert for this patient.
+  // Optimistically updates local state so the table clears immediately.
+  const handleResolveAll = useCallback(async () => {
+    const token = getToken();
+    if (!token || resolvingAll) return;
+    setResolvingAll(true);
+    try {
+      await resolveAllAlerts(patientId, token);
+      const now = new Date().toISOString();
+      setAlertLog((prev) =>
+        prev.map((a) => (a.resolved_at ? a : { ...a, resolved_at: now })),
+      );
+    } finally {
+      setResolvingAll(false);
+    }
+  }, [patientId, resolvingAll]);
+
   // Manual Fetch button — reads current date pickers and clears any active highlight
   const loadHistory = useCallback(() => {
     setHighlightWindow(null);
     doFetchHistory(histFrom, histTo);
   }, [doFetchHistory, histFrom, histTo]);
 
-  // Check button — zooms chart, opens chatbox, seeds first AI message
+  // Stage 1 — "Check" button: zoom chart + fetch history. Drawer stays closed.
+  // Populates pendingAlert so Stage 2 (markArea click) can open the copilot immediately.
   const handleCheckAlert = useCallback(async (alert: Alert) => {
     const startTs = new Date(alert.triggered_at).getTime();
     const endTs = alert.resolved_at
@@ -180,25 +225,16 @@ export default function PatientDetailPage() {
     const fromDate = new Date(startTs - 2 * 60 * 1000).toISOString().slice(0, 10);
     const toDate   = new Date(endTs   + 2 * 60 * 1000).toISOString().slice(0, 10);
 
+    // Reset any in-flight copilot session and clear pending
+    setCopilotOpen(false);
+    setPendingAlert(null);
+
     setHistFrom(fromDate);
     setHistTo(toDate);
     setHighlightWindow({ startTs, endTs, metric: alert.metric });
     historyChartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-    // Open chatbox immediately — clear prior conversation, show typing indicator
-    setCopilotMessages([]);
-    setCopilotContext({
-      alertId: alert.id,
-      metric: alert.metric,
-      value: alert.value,
-      triggeredAt: alert.triggered_at,
-      resolvedAt: alert.resolved_at,
-      readingsSlice: [],
-    });
-    setCopilotOpen(true);
-    setCopilotInitializing(true);
-
-    // Fetch history, extract the in-window slice, call initial analysis
+    // Fetch history in the background — once done, stage the data for the markArea click
     const data = await doFetchHistory(fromDate, toDate);
     const slice = data.filter((r) => {
       const ts = new Date(r.ts).getTime();
@@ -208,8 +244,26 @@ export default function PatientDetailPage() {
       ts: r.ts, spo2: r.spo2, bpm: r.bpm, temperature: r.temperature,
     }));
 
-    // Store the slice in context so follow-up turns can reference it
-    setCopilotContext((prev) => prev ? { ...prev, readingsSlice } : null);
+    setPendingAlert({ alert, readingsSlice });
+  }, [doFetchHistory]);
+
+  // Stage 2 — markArea click: open copilot drawer and trigger AI analysis.
+  // Only fires after Stage 1 has populated pendingAlert.
+  const handleMarkAreaClick = useCallback(async () => {
+    if (!pendingAlert) return;
+    const { alert, readingsSlice } = pendingAlert;
+
+    setCopilotMessages([]);
+    setCopilotContext({
+      alertId: alert.id,
+      metric: alert.metric,
+      value: alert.value,
+      triggeredAt: alert.triggered_at,
+      resolvedAt: alert.resolved_at,
+      readingsSlice,
+    });
+    setCopilotOpen(true);
+    setCopilotInitializing(true);
 
     try {
       const token = getToken();
@@ -238,7 +292,7 @@ export default function PatientDetailPage() {
     } finally {
       setCopilotInitializing(false);
     }
-  }, [doFetchHistory]);
+  }, [pendingAlert]);
 
   // Follow-up message handler — streams response word-by-word into the chat bubble.
   const handleCopilotSend = useCallback(async (message: string) => {
@@ -569,6 +623,7 @@ export default function PatientDetailPage() {
             onToChange={setHistTo}
             onFetch={loadHistory}
             highlight={highlightWindow ?? undefined}
+            onMarkAreaClick={pendingAlert ? handleMarkAreaClick : undefined}
           />
         </motion.div>
 
@@ -652,12 +707,27 @@ export default function PatientDetailPage() {
           <TableCard
             icon={<AlertTriangle className="w-4 h-4" style={{ color: "#f59e0b" }} />}
             title="Alert Log"
-            badge={unresolvedCount > 0 ? `${unresolvedCount} unresolved` : "All clear"}
+            badge={
+              resolvingAll ? (
+                <>
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-full border border-current border-t-transparent animate-spin"
+                  />
+                  Resolving…
+                </>
+              ) : unresolvedCount > 0 ? (
+                `${unresolvedCount} unresolved`
+              ) : (
+                "All clear"
+              )
+            }
             badgeStyle={
               unresolvedCount > 0
                 ? { background: "rgba(255,180,171,0.08)", color: "#ffb4ab" }
                 : { background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }
             }
+            onBadgeClick={unresolvedCount > 0 ? handleResolveAll : undefined}
+            badgeDisabled={resolvingAll}
           >
             {alertLog.length === 0 ? (
               <p className="px-5 py-8 text-center text-xs" style={{ color: "#45464d" }}>
