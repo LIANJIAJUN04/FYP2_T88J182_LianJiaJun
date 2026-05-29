@@ -46,6 +46,7 @@ export function HistoryChart({
   onToChange,
   onFetch,
   highlight,
+  onMarkAreaClick,
 }: HistoryChartProps) {
   const [tab, setTab] = useState<Tab>("spo2");
   const metric = METRICS.find((m) => m.key === tab)!;
@@ -79,15 +80,17 @@ export function HistoryChart({
   // ── ECharts option ────────────────────────────────────────────────────────
   const option = useMemo(() => {
     // markArea: semi-transparent red band from startTs to endTs
+    const clickable = hasAlert && !!onMarkAreaClick;
     const markArea =
       hasAlert && highlight
         ? {
-            silent: true,
+            silent: !clickable,
             itemStyle: {
               color: "rgba(239,68,68,0.14)",
               borderColor: "rgba(239,68,68,0.55)",
               borderWidth: 1,
               borderType: "solid" as const,
+              ...(clickable ? { cursor: "pointer" } : {}),
             },
             label: {
               show: true,
@@ -95,7 +98,9 @@ export function HistoryChart({
               color: "#f87171",
               fontSize: 10,
               fontWeight: 700,
-              formatter: "⚠ Abnormal Detection",
+              formatter: clickable
+                ? "⚠ Abnormal Detection  ·  Click to analyze"
+                : "⚠ Abnormal Detection",
               backgroundColor: "rgba(239,68,68,0.12)",
               padding: [3, 7] as [number, number],
               borderRadius: 4,
@@ -234,8 +239,24 @@ export function HistoryChart({
           : []),
       ],
     };
-  }, [allData, alertData, hasAlert, highlight, metric]);
+  }, [allData, alertData, hasAlert, highlight, metric, onMarkAreaClick]);
   // ── end ECharts option ───────────────────────────────────────────────────
+
+  // ECharts event bindings — only active when the markArea is clickable
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type EChartsEvents = Record<string, (params: any) => void>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const onEvents = useMemo<EChartsEvents>(() => {
+    if (!onMarkAreaClick || !hasAlert) return {} as EChartsEvents;
+    return {
+      click: (params: { componentType?: string; dataType?: string }) => {
+        // ECharts fires componentType='markArea' for markArea clicks
+        if (params.componentType === "markArea" || params.dataType === "markArea") {
+          onMarkAreaClick();
+        }
+      },
+    };
+  }, [onMarkAreaClick, hasAlert]);
 
   return (
     <div
@@ -274,7 +295,7 @@ export function HistoryChart({
                 className="w-1.5 h-1.5 rounded-full animate-pulse"
                 style={{ background: "#ef4444" }}
               />
-              Alert highlighted
+              {onMarkAreaClick ? "Alert zone · Click to analyze" : "Alert highlighted"}
             </span>
           )}
         </div>
@@ -360,6 +381,7 @@ export function HistoryChart({
             style={{ height: 450, width: "100%" }}
             notMerge={true}
             lazyUpdate={false}
+            onEvents={onEvents}
           />
         )}
       </motion.div>
