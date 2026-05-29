@@ -6,7 +6,11 @@ export interface PatientRow extends Patient {
   unresolvedAlerts: number;
 }
 
+export type FilterStatus = "all" | "active" | "inactive";
+
 export interface PatientTableProps {
   patients: PatientRow[];
   loading: boolean;
+  filterStatus: FilterStatus;
+  onFilterStatusChange: (value: FilterStatus) => void;
 }
