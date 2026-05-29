@@ -87,11 +87,33 @@ export function fetchSessions(patientId: string, token: string) {
   return apiFetch<Session[]>(`/api/patients/${patientId}/sessions`, token);
 }
 
-export function fetchHistory(patientId: string, token: string, from: string, to: string) {
-  return apiFetch<Reading[]>(
+export interface AbnormalSegment {
+  startTime: string;  // ISO string
+  endTime: string;    // ISO string
+  reason: string;     // e.g. "Abnormal SpO2 Drop (<95%)"
+}
+
+export interface HistoryResponse {
+  readings: Reading[];
+  abnormalSegments: AbnormalSegment[];
+}
+
+// Backward-compatible: current backend returns Reading[]; new backend returns HistoryResponse.
+export function fetchHistory(
+  patientId: string,
+  token: string,
+  from: string,
+  to: string,
+): Promise<HistoryResponse> {
+  return apiFetch<Reading[] | HistoryResponse>(
     `/api/patients/${patientId}/history?from=${from}&to=${to}`,
-    token
-  );
+    token,
+  ).then((data) => {
+    if (Array.isArray(data)) {
+      return { readings: data, abnormalSegments: [] };
+    }
+    return { readings: data.readings, abnormalSegments: data.abnormalSegments ?? [] };
+  });
 }
 
 export function getStreamUrl(patientId: string, token: string): string {
