@@ -5,14 +5,13 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Search, ChevronRight, Users, Filter } from "lucide-react";
 import { AlertBadge } from "@/components/AlertBadge/AlertBadge";
-import type { PatientTableProps } from "./PatientTable.types";
+import type { PatientTableProps, FilterStatus } from "./PatientTable.types";
 
 const WARDS = ["All Wards", "A", "B", "C", "D", "ICU", "ER"];
 
-export function PatientTable({ patients, loading }: PatientTableProps) {
+export function PatientTable({ patients, loading, filterStatus, onFilterStatusChange }: PatientTableProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
   const [filterWard, setFilterWard] = useState("All Wards");
 
   const filtered = useMemo(() => {
@@ -88,10 +87,10 @@ export function PatientTable({ patients, loading }: PatientTableProps) {
             />
           </div>
 
-          {/* Status filter */}
+          {/* Status filter — controlled by parent so metrics cards stay in sync */}
           <select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as "all" | "active" | "inactive")}
+            onChange={(e) => onFilterStatusChange(e.target.value as FilterStatus)}
             style={selectStyle}
           >
             <option value="all">All Status</option>
@@ -197,7 +196,7 @@ export function PatientTable({ patients, loading }: PatientTableProps) {
                       </span>
                     </td>
                     <td className="px-5 py-4">
-                      <AlertBadge count={patient.alertCount} hasUnresolved={patient.unresolvedAlerts > 0} />
+                      <AlertBadge count={patient.unresolvedAlerts} hasUnresolved={patient.unresolvedAlerts > 0} />
                     </td>
                     <td className="px-5 py-4">
                       <button
