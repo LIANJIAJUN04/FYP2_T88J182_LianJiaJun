@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Calendar, RefreshCw } from "lucide-react";
+import { Calendar, RefreshCw, Download } from "lucide-react";
 import type { HistoryChartProps } from "./HistoryChart.types";
 import type { Reading } from "@/lib/api";
 
@@ -38,6 +38,7 @@ const INPUT_STYLE: React.CSSProperties = {
 };
 
 export function HistoryChart({
+  patientId,
   readings,
   loading,
   from,
@@ -47,6 +48,7 @@ export function HistoryChart({
   onFetch,
   highlight,
   onMarkAreaClick,
+  abnormalSegments = [],
 }: HistoryChartProps) {
   const [tab, setTab] = useState<Tab>("spo2");
   const metric = METRICS.find((m) => m.key === tab)!;
@@ -76,6 +78,25 @@ export function HistoryChart({
 
   // Only show the alert visuals when at least one data point falls inside the window
   const hasAlert = highlight != null && alertData.some((d) => d[1] !== null);
+
+  // Export the currently loaded readings for the active tab as a CSV download
+  function handleExportCSV() {
+    if (readings.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `MediSync_Patient_${patientId}_${today}.csv`;
+    const header = '"Timestamp","Metric Value"';
+    const rows = readings
+      .map((r: Reading) => `"${new Date(r.ts).toISOString()}","${r[tab]}"`)
+      .join("\n");
+    const csv = `${header}\n${rows}`;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   // ── ECharts option ────────────────────────────────────────────────────────
   const option = useMemo(() => {
@@ -107,6 +128,39 @@ export function HistoryChart({
             },
             // Both endpoints are raw ms timestamps — works regardless of data density
             data: [[{ xAxis: highlight.startTs }, { xAxis: highlight.endTs }]],
+          }
+        : undefined;
+
+    // Backend-supplied anomalous segments — always silent, labeled with reason
+    const segmentsMarkArea =
+      abnormalSegments.length > 0
+        ? {
+            silent: true,
+            itemStyle: {
+              color: "rgba(239,68,68,0.15)",
+              borderColor: "rgba(239,68,68,0.35)",
+              borderWidth: 1,
+              borderType: "dashed" as const,
+            },
+            label: {
+              show: true,
+              position: "insideTopLeft" as const,
+              color: "#f87171",
+              fontSize: 10,
+              fontWeight: 700,
+              // {b} resolves to the `name` property set on each start-coordinate
+              formatter: "{b}",
+              backgroundColor: "rgba(239,68,68,0.10)",
+              padding: [3, 7] as [number, number],
+              borderRadius: 4,
+            },
+            data: abnormalSegments.map((seg) => [
+              {
+                xAxis: new Date(seg.startTime).getTime(),
+                name: seg.reason,
+              },
+              { xAxis: new Date(seg.endTime).getTime() },
+            ]),
           }
         : undefined;
 
@@ -144,11 +198,11 @@ export function HistoryChart({
         axisLabel: {
           fontSize: 9,
           color: "#909097",
-          rotate: 15,
+          hideOverlap: true,
           formatter(val: number) {
-            return new Date(val).toLocaleString("en-GB", {
-              month: "short", day: "numeric",
-              hour: "2-digit", minute: "2-digit",
+            return new Date(val).toLocaleTimeString("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
             });
           },
         },
@@ -160,8 +214,10 @@ export function HistoryChart({
       yAxis: {
         type: "value" as const,
         scale: true,
-        min: (value: { min: number }) => Math.floor(value.min) - 2,
-        max: (value: { max: number }) => Math.ceil(value.max) + 2,
+        min: (value: { min: number }) =>
+          isFinite(value.min) ? Math.floor(value.min) - 2 : metric.min,
+        max: (value: { max: number }) =>
+          isFinite(value.max) ? Math.ceil(value.max) + 2 : metric.max,
         axisLabel: { fontSize: 10, color: "#909097" },
         axisLine: { show: false },
         axisTick: { show: false },
@@ -170,11 +226,15 @@ export function HistoryChart({
 
       // dataZoom: mouse-wheel scroll to zoom in/out, drag to pan;
       // slider at the bottom gives a persistent range handle.
+      // filterMode "none" keeps every data point in the series regardless of the
+      // zoom window — only the viewport shifts. "filter" was removing out-of-range
+      // points from the series array, leaving an empty dataset inside the flat
+      // section, which caused value.min → Infinity and blew up the y-axis entirely.
       dataZoom: [
         {
           type: "inside",
           xAxisIndex: 0,
-          filterMode: "filter",
+          filterMode: "none",
           zoomOnMouseWheel: true,
           moveOnMouseMove: true,
           moveOnMouseWheel: false,
@@ -183,6 +243,7 @@ export function HistoryChart({
         {
           type: "slider",
           xAxisIndex: 0,
+          filterMode: "none",
           height: 18,
           bottom: 8,
           fillerColor: "rgba(76,215,246,0.08)",
@@ -204,7 +265,7 @@ export function HistoryChart({
 
       series: [
         {
-          // Series 0: full data in metric colour + the red markArea background band
+          // Series 0: full data in metric colour + the alert-highlight markArea
           name: metric.unit,
           type: "line" as const,
           data: allData,
@@ -237,9 +298,25 @@ export function HistoryChart({
               },
             ]
           : []),
+        // Series 2: backend-supplied anomalous segments — empty data array, purely
+        // a markArea carrier. Always silent so it never interferes with hover or clicks.
+        ...(segmentsMarkArea
+          ? [
+              {
+                name: "segments",
+                type: "line" as const,
+                data: [] as [number, number][],
+                silent: true,
+                symbol: "none",
+                lineStyle: { opacity: 0 },
+                tooltip: { show: false },
+                markArea: segmentsMarkArea,
+              },
+            ]
+          : []),
       ],
     };
-  }, [allData, alertData, hasAlert, highlight, metric, onMarkAreaClick]);
+  }, [allData, alertData, hasAlert, highlight, metric, onMarkAreaClick, abnormalSegments]);
   // ── end ECharts option ───────────────────────────────────────────────────
 
   // ECharts event bindings — only active when the markArea is clickable
@@ -268,9 +345,9 @@ export function HistoryChart({
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4" style={{ color: "#bec6e0" }} />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-5 gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Calendar className="w-4 h-4 shrink-0" style={{ color: "#bec6e0" }} />
           <h3 className="text-sm font-semibold" style={{ color: "#c6c6cd" }}>
             Health Trends
           </h3>
@@ -280,6 +357,18 @@ export function HistoryChart({
               style={{ background: "rgba(76,215,246,0.08)", color: "#4cd7f6" }}
             >
               {readings.length} readings
+            </span>
+          )}
+          {abnormalSegments.length > 0 && (
+            <span
+              className="text-xs px-2 py-0.5 rounded-full"
+              style={{
+                background: "rgba(239,68,68,0.08)",
+                color: "#f87171",
+                border: "1px solid rgba(239,68,68,0.2)",
+              }}
+            >
+              {abnormalSegments.length} anomal{abnormalSegments.length === 1 ? "y" : "ies"}
             </span>
           )}
           {hasAlert && (
@@ -300,35 +389,57 @@ export function HistoryChart({
           )}
         </div>
 
-        {/* Date range controls */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => onFromChange(e.target.value)}
-            style={INPUT_STYLE}
-          />
-          <span style={{ color: "#45464d", fontSize: "12px" }}>to</span>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => onToChange(e.target.value)}
-            style={INPUT_STYLE}
-          />
-          <button
-            onClick={onFetch}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-            style={{
-              background: "linear-gradient(135deg, #4cd7f6, #03b5d3)",
-              color: "#001f26",
-              opacity: loading ? 0.6 : 1,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
-            {loading ? "Loading…" : "Fetch"}
-          </button>
+        {/* Date range controls + action buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => onFromChange(e.target.value)}
+              className="flex-1 sm:flex-none"
+              style={INPUT_STYLE}
+            />
+            <span style={{ color: "#45464d", fontSize: "12px" }}>to</span>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => onToChange(e.target.value)}
+              className="flex-1 sm:flex-none"
+              style={INPUT_STYLE}
+            />
+          </div>
+          {/* Action buttons: Fetch + Export CSV — flex-row so they sit side-by-side on all widths */}
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button
+              onClick={onFetch}
+              disabled={loading}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-none"
+              style={{
+                background: "linear-gradient(135deg, #4cd7f6, #03b5d3)",
+                color: "#001f26",
+                opacity: loading ? 0.6 : 1,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Loading…" : "Fetch"}
+            </button>
+            <button
+              onClick={handleExportCSV}
+              disabled={readings.length === 0}
+              title={readings.length === 0 ? "Fetch data first" : `Export ${metric.label} as CSV`}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-1 sm:flex-none"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: readings.length === 0 ? "#45464d" : "#bec6e0",
+                cursor: readings.length === 0 ? "not-allowed" : "pointer",
+              }}
+            >
+              <Download className="w-3 h-3 shrink-0" />
+              <span className="truncate">Export CSV</span>
+            </button>
+          </div>
         </div>
       </div>
 

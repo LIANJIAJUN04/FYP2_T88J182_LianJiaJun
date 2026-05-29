@@ -1,13 +1,13 @@
 #pragma once
 
 // ── WiFi ──────────────────────────────────────────────────────────────────────
-#define WIFI_SSID      "LIAN"
-#define WIFI_PASSWORD  "Jacky_04"
+#define WIFI_SSID      "your-wifi-ssid"
+#define WIFI_PASSWORD  "your-wifi-password"
 
 // ── MQTT broker ───────────────────────────────────────────────────────────────
 // Set MQTT_BROKER to the LAN IP of the bedside machine running Mosquitto.
 // Find it with: ip addr (Linux) / ipconfig (Windows) / ifconfig (Mac)
-#define MQTT_BROKER    "10.235.22.181"
+#define MQTT_BROKER    "192.168.x.x"
 #define MQTT_PORT      1883
 #define MQTT_TOPIC     "medisync/readings"   // ESP32 publishes readings here
 #define MQTT_STATUS    "medisync/status"     // LWT topic — broker publishes "offline" on abrupt loss
