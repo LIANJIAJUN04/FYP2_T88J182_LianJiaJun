@@ -1,4 +1,6 @@
-import type { Reading } from "@/lib/api";
+import type { Reading, AbnormalSegment } from "@/lib/api";
+
+export type { AbnormalSegment };
 
 export interface AlertHighlight {
   startTs: number; // ms epoch — start of the alert window
@@ -7,6 +9,7 @@ export interface AlertHighlight {
 }
 
 export interface HistoryChartProps {
+  patientId: string;
   readings: Reading[];
   loading: boolean;
   from: string;
@@ -16,4 +19,5 @@ export interface HistoryChartProps {
   onFetch: () => void;
   highlight?: AlertHighlight;
   onMarkAreaClick?: () => void;
+  abnormalSegments?: AbnormalSegment[];
 }
