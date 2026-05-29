@@ -547,6 +547,12 @@ export function HistoryChart({
         splitLine: { lineStyle: { color: "rgba(69,70,77,0.4)", type: "dashed" as const } },
       },
 
+      // dataZoom: mouse-wheel scroll to zoom in/out, drag to pan;
+      // slider at the bottom gives a persistent range handle.
+      // filterMode "none" keeps every data point in the series regardless of the
+      // zoom window — only the viewport shifts. "filter" was removing out-of-range
+      // points from the series array, leaving an empty dataset inside the flat
+      // section, which caused value.min → Infinity and blew up the y-axis entirely.
       dataZoom: [
         {
           type: "inside",
@@ -582,6 +588,7 @@ export function HistoryChart({
 
       series: [
         {
+          // Series 0: full data in metric colour + the alert-highlight markArea
           name: metric.unit,
           type: "line" as const,
           data: allData,
@@ -612,6 +619,22 @@ export function HistoryChart({
                 connectNulls: false,
                 z: 10,
                 tooltip: { show: false },
+              },
+            ]
+          : []),
+        // Series 2: backend-supplied anomalous segments — empty data array, purely
+        // a markArea carrier. Always silent so it never interferes with hover or clicks.
+        ...(segmentsMarkArea
+          ? [
+              {
+                name: "segments",
+                type: "line" as const,
+                data: [] as [number, number][],
+                silent: true,
+                symbol: "none",
+                lineStyle: { opacity: 0 },
+                tooltip: { show: false },
+                markArea: segmentsMarkArea,
               },
             ]
           : []),

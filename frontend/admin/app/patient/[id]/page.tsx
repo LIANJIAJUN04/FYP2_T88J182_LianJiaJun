@@ -541,7 +541,7 @@ export default function PatientDetailPage() {
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="sticky top-0 z-50 flex items-center justify-between px-6 py-4"
+        className="sticky top-0 z-50 flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4"
         style={{
           borderBottom: "1px solid rgba(255,255,255,0.06)",
           background: "rgba(19,19,21,0.9)",
