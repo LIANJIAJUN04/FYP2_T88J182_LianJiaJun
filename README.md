@@ -118,7 +118,7 @@ MediSync/
 3. Click **View** on any patient to see live SSE stream, history chart, session log, and alert log
 4. Select a time range (1h / 6h / 24h / 7d) and click **Generate Summary** for a streaming AI clinical narrative
 5. Click **Check** on any alert row — the chart zooms to the alert window (Stage 1). Click the red zone in the chart to open the **Clinical AI Copilot** drawer for a per-alert analysis (Stage 2)
-6. Click the **"X unresolved"** badge in the Alert Log header to bulk-resolve all open alerts in a single operation (audit trail preserved — rows are soft-resolved, never deleted)
+6. Click **"All clear"** in the Alert Log header at any time to bulk-resolve all open alerts. The log clears instantly (optimistic update), then re-syncs from the server so resolved rows reappear with timestamps. Audit trail preserved — rows are soft-resolved, never deleted.
 
 ---
 
@@ -158,12 +158,29 @@ Each alert row in the admin patient detail page has a **Check** button. The inte
 
 **Follow-up chat** (streaming SSE): Clinicians can ask open-ended questions about the alert. Responses stream token-by-token with full conversation history. The system prompt is cached so repeated turns within a session cost minimal input tokens.
 
-**Bulk alert resolution:** The "X unresolved" badge in the Alert Log header is a clickable button. Clicking it calls `PUT /api/alerts/resolve-all/{patient_id}`, which stamps `resolved_at = now()` on every open alert for the patient in a single query. No rows are deleted — the full alert history is preserved as a medical audit trail. The frontend optimistically clears the unresolved count immediately without requiring a page refresh.
+**Bulk alert resolution:** The **"All clear"** button in the Alert Log header is always interactive — it never becomes a static label. Clicking it calls `PUT /api/alerts/resolve-all/{patient_id}`, which stamps `resolved_at = now()` on every open alert for the patient in a single query. No rows are deleted — the full alert history is preserved as a medical audit trail. The frontend optimistically empties the log immediately, then re-fetches to restore resolved rows with accurate timestamps.
 
 API endpoints:
 - `POST /api/copilot/analyze` — buffered JSON (validation required for structured rendering)
 - `POST /api/copilot/chat` — SSE stream with `X-Accel-Buffering: no` for Railway nginx
 - `PUT /api/alerts/resolve-all/{patient_id}` — bulk soft-resolve; returns `{ status, resolved_count }`
+
+---
+
+## Admin Dashboard Metrics
+
+The four summary cards on the admin dashboard (`/dashboard`) count **distinct patients**, not raw alert rows.
+
+| Card | Metric | Mode |
+|---|---|---|
+| Total Patients | All registered patients | Always global |
+| Active Sessions | Patients with an open session | Always global |
+| Patients Requiring Attention | Distinct patients with ≥1 unresolved alert — filtered to match the current table view | Context-aware |
+| Critical Patients | Distinct **active-session** patients with ≥1 unresolved alert | Always live |
+
+**Context-aware mode (Card 3):** The Status filter in the patient table is a controlled prop lifted to `DashboardPage`. Switching between All / Active / Inactive recomputes `contextPatients` and immediately re-derives Card 3's value. Card 4 is always live regardless of the filter.
+
+**`AlertBadge` in the patient table** shows `unresolvedAlerts` count (not total all-time). When zero unresolved alerts exist it renders "None" — keeping the table badge consistent with the cards above.
 
 ---
 
