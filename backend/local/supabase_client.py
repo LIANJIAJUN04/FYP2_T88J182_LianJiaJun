@@ -42,7 +42,7 @@ def open_session(patient_id: str) -> str:
     # Mutual exclusion: forcefully close any ghost sessions before opening a new
     # one.  Without this, a patient who loses connection without logging out
     # accumulates dangling 'Active' rows on every subsequent login.
-    close_active_session(patient_id, reason="device_disconnect")
+    close_active_session(patient_id, reason="ghost_session_cleanup")
     result = client.table("sessions").insert({"patient_id": patient_id}).execute()
     return result.data[0]["id"]
 
@@ -51,7 +51,7 @@ def close_active_session(patient_id: str, reason: str = "manual_logout") -> None
     """Stamp ended_at, compute duration, and record the closure reason.
 
     Safe to call when no open session exists — silently returns.
-    reason values: 'manual_logout' | 'device_disconnect' | 'auto_timeout'
+    reason values: 'manual_logout' | 'device_disconnect' | 'auto_timeout' | 'ghost_session_cleanup'
     """
     open_rows = (
         client.table("sessions")

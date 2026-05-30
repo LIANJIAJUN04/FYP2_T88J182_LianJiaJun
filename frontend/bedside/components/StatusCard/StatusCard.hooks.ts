@@ -21,6 +21,7 @@ export function useSSEStream() {
   const [status, setStatus] = useState<Status>("connecting");
   const [readings, setReadings] = useState<StreamReading[]>([]);
   const esRef = useRef<EventSource | null>(null);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     function connect() {
@@ -38,18 +39,21 @@ export function useSSEStream() {
             const next = [...prev, data];
             return next.slice(-60);
           });
-        } catch {}
+        } catch (err) {
+          console.warn("[SSE] Parse error:", err);
+        }
       };
 
       es.onerror = () => {
         setStatus("connecting");
         es.close();
-        setTimeout(connect, 3000);
+        reconnectRef.current = setTimeout(connect, 3000);
       };
     }
 
     connect();
     return () => {
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
       esRef.current?.close();
     };
   }, []);
