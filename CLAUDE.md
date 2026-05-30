@@ -917,7 +917,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 - [x] Install libraries: `ArduinoJson`, `SparkFun MAX3010x`, `Adafruit MLX90614`
 - [x] Implement `sensors.h` — `sensorsBegin()`, `sensorsUpdate()`, `readSpO2()`, `readBPM()`, `readTemperature()`
 - [x] `i2c_scan` utility sketch — scan bus, print MAX30102 (0x57) and MLX90614 (0x5A)
-- [x] Temperature retry — 3 attempts on transient I2C NaN before returning NaN
+- [x] Temperature read — single-attempt read; on NaN, bodyTemp retains its last valid value and the resulting 422 is logged by the bridge as a dropped reading
 - [x] LED — green = OK (valid reading), red = error (sensor failure)
 - [x] USB Serial transport — `firmware/serial_bridge.py` reads JSON from COM port, POSTs to FastAPI
 - [x] Add Mosquitto broker service to `docker-compose.yml` + `mosquitto/config/mosquitto.conf`

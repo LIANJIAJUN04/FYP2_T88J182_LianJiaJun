@@ -42,6 +42,7 @@ Edit the constants below to match your local network and env vars.
 """
 
 import json
+import os
 import sys
 import threading
 
@@ -60,7 +61,7 @@ API_URL         = "http://localhost:8000/api/readings"
 DISCONNECT_URL  = "http://localhost:8000/api/device/disconnect"
 DEVICE_SECRET   = "esp32"
 DEVICE_ID       = "esp32-001"
-REQUEST_TIMEOUT = 2
+REQUEST_TIMEOUT = 5
 
 # How long to wait after an LWT before closing the session.
 # A brief WiFi blip causes the ESP32 to reconnect in <20 s — any reading
@@ -152,7 +153,7 @@ def notify_disconnect() -> None:
 def on_connect(client, userdata, connect_flags, reason_code, properties) -> None:
     if reason_code != 0:
         print(f"[bridge] Broker connection refused — rc={reason_code}")
-        sys.exit(1)
+        os._exit(1)  # os._exit terminates all threads; sys.exit only kills the callback thread
     print(f"[bridge] Connected to {MQTT_BROKER}:{MQTT_PORT}")
     client.subscribe(TOPIC_READINGS, qos=1)
     client.subscribe(TOPIC_STATUS,   qos=1)

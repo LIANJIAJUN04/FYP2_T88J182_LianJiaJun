@@ -263,6 +263,7 @@ def _build_event_context(
         "corr_str":        corr_str,
         "table":           "\n".join(rows) if rows else "  (no readings in window)",
         "n_readings":      len(readings),
+        "n_shown":         len(rows),
         "triggered_fmt":   triggered_at[:19].replace("T", " ") + " UTC",
         "resolved_fmt":    (
             resolved_at[:19].replace("T", " ") + " UTC"
@@ -342,7 +343,7 @@ Triggered at: {ctx['triggered_fmt']}
 Resolved at: {ctx['resolved_fmt']}
 Event duration: {ctx['duration_str']}
 
-SENSOR TELEMETRY — {ctx['n_readings']} readings in event window
+SENSOR TELEMETRY — First {ctx['n_shown']} of {ctx['n_readings']} readings shown in event window
 {ctx['table']}
 
 EVENT WINDOW STATISTICS
@@ -358,7 +359,7 @@ Provide your clinical analysis."""
         try:
             with _client.messages.stream(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=550,
+                max_tokens=650,
                 system=_SYSTEM_COPILOT_INITIAL_BLOCKS,
                 messages=[{"role": "user", "content": user_msg}],
             ) as stream:
