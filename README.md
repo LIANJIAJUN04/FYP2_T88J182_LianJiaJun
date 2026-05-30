@@ -47,7 +47,7 @@ MediSync/
 │   │   ├── main.ino        # WiFi auto-reconnect, MQTT LWT keepalive=15 s, publishes every 1 s
 │   │   └── config.h        # WiFi SSID/password, MQTT broker IP, device credentials, LED pins
 │   ├── i2c_scan/           # Utility sketch — verify sensor wiring
-│   ├── serial_bridge.py    # Legacy transport — USB Serial → FastAPI (still works for dev/testing)
+│   ├── serial_bridge.py    # Deprecated — USB Serial bridge; ESP32 now runs WiFi + MQTT exclusively
 │   └── mqtt_bridge.py      # WiFi transport bridge — LWT subscriber + readings forwarder
 ├── backend/
 │   ├── local/              # FastAPI — bedside machine (localhost:8000)
@@ -56,6 +56,7 @@ MediSync/
 │   │   ├── database.py     # Local InfluxDB write client
 │   │   ├── supabase_client.py  # Patient + session ops; ghost-session prevention + duration tracking
 │   │   ├── sync.py         # Async queue + cloud sync worker (SQLite-backed)
+│   │   ├── notifications.py  # Telegram + SMTP email alert sender (fire-and-forget)
 │   │   ├── ml/
 │   │   │   ├── predict.py  # load_model() + run_inference() — XGBoost anomaly detection
 │   │   │   └── __init__.py
@@ -211,6 +212,39 @@ Artefacts live in `ML/` and are loaded once at FastAPI startup into `app.state.m
 
 ---
 
+## Alert Notifications (Telegram + Email)
+
+When the ML model detects an anomaly or a reading crosses a danger threshold, the local backend sends an instant notification to the admin via **Telegram** and/or **email** — no page refresh required.
+
+**What triggers a notification:**
+- Rule-based **DANGER** — one notification per breached metric (SpO₂, BPM, or Temperature)
+- **ML anomaly** (prediction = anomaly, status = normal) — one notification for the most-deviant metric
+
+**Built-in cooldown:** A notification fires only once per alert event. Subsequent readings in the same danger window are suppressed — the alert row already exists in Supabase so `upsert_alert` skips the insert and no notification is sent. The next notification fires only after the patient recovers (alerts auto-resolved) and a new event begins.
+
+**Setup — Telegram:**
+1. Message `@BotFather` → `/newbot` → copy the token
+2. Start a chat with your bot, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` — copy the `chat.id` value
+
+**Setup — Email (Gmail):**
+1. Enable 2-Step Verification on your Google account
+2. Go to `https://myaccount.google.com/apppasswords` → generate an App Password for "Mail"
+3. Use the 16-char App Password as `SMTP_PASSWORD`
+
+**Configure `backend/local/.env`:**
+```env
+TELEGRAM_BOT_TOKEN=your-bot-token
+TELEGRAM_CHAT_ID=your-chat-id
+
+ADMIN_EMAIL=admin@example.com
+SMTP_USER=sender@gmail.com
+SMTP_PASSWORD=your-app-password
+```
+
+Either channel can be left blank to disable it independently — missing vars are silently skipped.
+
+---
+
 ## Status Logic
 
 Rule-based, computed on every reading:
@@ -343,8 +377,6 @@ The bridge subscribes to `medisync/status` — on abrupt power loss the broker b
 
 To verify sensor wiring before flashing, use `firmware/i2c_scan/i2c_scan.ino` — Serial Monitor should report MAX30102 at `0x57` and MLX90614 at `0x5A`.
 
-**Legacy: USB Serial** (`serial_bridge.py`) still works for development without WiFi — it auto-detects the ESP32 COM port and detects disconnection via `SerialException` (USB pull) and a 30-second idle timeout.
-
 ### Admin Frontend (local dev)
 
 ```bash
@@ -423,12 +455,13 @@ See `CLAUDE.md` for the full variable reference.
 | 5 | Cloud FastAPI backend | ✅ Done |
 | 6 | Bedside frontend | ✅ Done |
 | 7 | Admin frontend | ✅ Done |
-| 8 | ESP32 firmware — WiFi + MQTT | ✅ Done — fill config.h credentials and flash |
+| 8 | ESP32 firmware — WiFi + MQTT | ✅ Done — end-to-end verified (ESP32 → Mosquitto → bridge → FastAPI → InfluxDB) |
 | 8.5 | Claude API CDSS — AI Summary + Clinical Copilot | ✅ Done |
 | 9 | ML anomaly detection | ✅ Done |
 | 10 | Polish & hardening | ✅ Done |
 | 11 | Session lifecycle management — automated termination | ✅ Done |
 | 12 | Admin live session badge — auto-refresh on device disconnect | ✅ Done |
+| 13 | Alert notifications — Telegram + email on anomaly/danger detection | ✅ Done |
 
 ---
 
@@ -437,11 +470,15 @@ See `CLAUDE.md` for the full variable reference.
 - ML artefacts (`ml/*.joblib`) are gitignored — retrain locally after cloning by re-running `ml/health_risk_ml.ipynb`
 - `app.state.active_patient_id` is in-memory — restarting local FastAPI requires the nurse to log in again
 - `status.py` is duplicated in local and cloud backends — keep them in sync
-- ESP32 firmware uses WiFi + MQTT with `keepalive=15 s` — LWT fires within ~22 s of abrupt power loss. Fill `config.h` credentials and flash `firmware/main/main.ino` to activate.
-- `serial_bridge.py` (USB serial) still works during development — disconnect detection via `SerialException` + 30-second idle timeout.
+- ESP32 firmware (WiFi + MQTT) is **fully verified end-to-end** — `main.ino` connects to WiFi, publishes to Mosquitto every 1 s, readings flow through `mqtt_bridge.py` → FastAPI → local InfluxDB. ESP32 runs on a USB power bank (no computer needed). LWT fires within ~22 s of abrupt power loss. Run `docker compose up -d` and `python firmware/mqtt_bridge.py` to start the bedside pipeline.
+- `mqtt_bridge.py` guards against retained LWT false-positives on startup: `msg.retain == 1` means the broker is replaying a stale offline message — it is skipped. Only a live (non-retained) offline LWT triggers `POST /api/device/disconnect`.
+- `serial_bridge.py` (USB serial) is deprecated — ESP32 runs WiFi + MQTT exclusively; the file is kept for reference only.
 - Session `closed_reason` values: `"manual_logout"` (nurse clicked logout) | `"device_disconnect"` (bridge detected hardware loss) | `"auto_timeout"` (5-min watchdog fallback)
 - Supabase migrations must be run in the SQL editor in order: `initial_schema` → `enable_rls` → `sessions_duration` → `sessions_realtime`
 - The `sessions_realtime` migration (`20260529000000_sessions_realtime.sql`) enables the Supabase Realtime subscription on the admin frontend so session rows update live when a device disconnects. The `ALTER PUBLICATION` line may error "already a member" if applied via the dashboard — safe to ignore; the `ALTER TABLE sessions REPLICA IDENTITY FULL` line is what matters.
 - The admin patient detail page auto-detects device offline via stale SSE data (`ts` frozen >15 s) and switches to 5 s session polling, flipping the "Session Active" badge to "No Active Session" within ~25 s of power-off — no page refresh required.
 - InfluxDB Cloud free tier: 5 MB/5 min write limit, 30-day retention
 - `ANTHROPIC_API_KEY` must be set in Railway for AI summary and Clinical Copilot — not needed locally
+- Telegram + email notifications fire only on the **first** reading of a new alert event — `upsert_alert` returns `False` for subsequent readings in the same event window, suppressing duplicates. The next notification fires only after the patient recovers and the alert is resolved.
+- Notification env vars are all optional — blank vars silently skip that channel; no exception is raised
+- Gmail SMTP requires an **App Password** (not your account password) — generate one at `https://myaccount.google.com/apppasswords` with 2-Step Verification enabled

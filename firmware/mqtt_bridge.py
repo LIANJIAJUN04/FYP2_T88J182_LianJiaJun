@@ -20,6 +20,15 @@ LWT flow
   4. This bridge receives the LWT, immediately POSTs /api/device/disconnect,
      and FastAPI closes the active session with accurate timestamps.
 
+Retained LWT guard
+------------------
+  The offline LWT is published with retain=true so a reconnecting bridge
+  still sees it even if it missed the live event.  On startup the broker
+  replays ALL retained messages to new subscribers.  msg.retain == 1 means
+  the message was stored before this bridge session started — it is stale
+  and must NOT trigger a disconnect.  Only a live (non-retained) offline
+  message means the ESP32 just went down.
+
 The FastAPI heartbeat watchdog (_heartbeat_watchdog in main.py) is still
 running as a secondary safety-net for edge cases where this bridge process
 itself crashes before it can forward the LWT.
@@ -34,6 +43,7 @@ Edit the constants below to match your local network and env vars.
 
 import json
 import sys
+import threading
 
 import requests
 import paho.mqtt.client as mqtt
@@ -52,10 +62,59 @@ DEVICE_SECRET   = "esp32"
 DEVICE_ID       = "esp32-001"
 REQUEST_TIMEOUT = 2
 
+# How long to wait after an LWT before closing the session.
+# A brief WiFi blip causes the ESP32 to reconnect in <20 s — any reading
+# arriving in this window cancels the timer and the session stays open.
+# Only a true power-off produces no readings for the full grace period.
+LWT_GRACE_SECONDS = 30
+
+
+# ── LWT grace-period timer ────────────────────────────────────────────────────
+
+_lwt_timer: threading.Timer | None = None
+_lwt_lock = threading.Lock()
+
+
+def _fire_disconnect() -> None:
+    """Grace period expired with no reading — treat as a real disconnect."""
+    global _lwt_timer
+    with _lwt_lock:
+        _lwt_timer = None
+    print(f"[bridge] Grace period elapsed — no reconnect detected, closing session")
+    notify_disconnect()
+
+
+def _schedule_lwt_disconnect() -> None:
+    """Start (or restart) the disconnect timer after receiving an LWT."""
+    global _lwt_timer
+    with _lwt_lock:
+        if _lwt_timer is not None:
+            _lwt_timer.cancel()
+        _lwt_timer = threading.Timer(LWT_GRACE_SECONDS, _fire_disconnect)
+        _lwt_timer.daemon = True
+        _lwt_timer.start()
+    print(
+        f"[bridge] LWT: ESP32 offline — waiting {LWT_GRACE_SECONDS}s "
+        f"for reconnect before closing session"
+    )
+
+
+def _cancel_lwt_timer(reason: str = "reconnect") -> None:
+    """Cancel the pending timer — ESP32 came back online."""
+    global _lwt_timer
+    with _lwt_lock:
+        if _lwt_timer is None:
+            return
+        _lwt_timer.cancel()
+        _lwt_timer = None
+    print(f"[bridge] LWT grace period cancelled ({reason}) — session kept open")
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def post_reading(payload: dict) -> None:
+    # A reading arriving means the ESP32 is live — cancel any pending LWT timer.
+    _cancel_lwt_timer("reading received")
     try:
         r = requests.post(
             API_URL,
@@ -88,11 +147,11 @@ def notify_disconnect() -> None:
         print(f"[bridge] Could not reach backend for disconnect: {e}")
 
 
-# ── MQTT callbacks ────────────────────────────────────────────────────────────
+# ── MQTT callbacks (paho-mqtt v2 API) ─────────────────────────────────────────
 
-def on_connect(client: mqtt.Client, userdata, flags, rc: int) -> None:
-    if rc != 0:
-        print(f"[bridge] Broker connection refused — rc={rc}")
+def on_connect(client, userdata, connect_flags, reason_code, properties) -> None:
+    if reason_code != 0:
+        print(f"[bridge] Broker connection refused — rc={reason_code}")
         sys.exit(1)
     print(f"[bridge] Connected to {MQTT_BROKER}:{MQTT_PORT}")
     client.subscribe(TOPIC_READINGS, qos=1)
@@ -100,12 +159,12 @@ def on_connect(client: mqtt.Client, userdata, flags, rc: int) -> None:
     print(f"[bridge] Subscribed to {TOPIC_READINGS} and {TOPIC_STATUS}")
 
 
-def on_disconnect(client: mqtt.Client, userdata, rc: int) -> None:
-    if rc != 0:
-        print(f"[bridge] Unexpected broker disconnect — rc={rc}, will auto-reconnect")
+def on_disconnect(client, userdata, disconnect_flags, reason_code, properties) -> None:
+    if reason_code != 0:
+        print(f"[bridge] Unexpected broker disconnect — rc={reason_code}, will auto-reconnect")
 
 
-def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
+def on_message(client, userdata, msg: mqtt.MQTTMessage) -> None:
     try:
         payload = json.loads(msg.payload.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -113,10 +172,15 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
         return
 
     if msg.topic == TOPIC_STATUS:
-        # LWT published by broker when ESP32 disappears
         if payload.get("status") == "offline":
-            print("[bridge] LWT: ESP32 went offline")
-            notify_disconnect()
+            if msg.retain:
+                # Stale retained message from a previous disconnect — ignore.
+                print("[bridge] Stale retained LWT ignored (device reconnecting…)")
+            else:
+                _schedule_lwt_disconnect()
+        elif payload.get("status") == "online":
+            print("[bridge] ESP32 online")
+            _cancel_lwt_timer("online status received")
         return
 
     if msg.topic == TOPIC_READINGS:
@@ -126,7 +190,11 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
-    client = mqtt.Client(client_id="medisync-bridge", clean_session=True)
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        client_id="medisync-bridge",
+        clean_session=True,
+    )
     client.on_connect    = on_connect
     client.on_disconnect = on_disconnect
     client.on_message    = on_message

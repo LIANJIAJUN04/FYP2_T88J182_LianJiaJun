@@ -83,9 +83,10 @@ def close_active_session(patient_id: str, reason: str = "manual_logout") -> None
         }).eq("id", row["id"]).execute()
 
 
-def upsert_alert(patient_id: str, metric: str, value: float) -> None:
+def upsert_alert(patient_id: str, metric: str, value: float) -> bool:
     """Open a new alert row only if there is no existing unresolved alert for
-    the same patient + metric.  This prevents one row per second flooding."""
+    the same patient + metric.  Returns True if a new row was inserted (first
+    occurrence), False if an unresolved alert already existed (duplicate)."""
     existing = (
         client.table("alerts")
         .select("id")
@@ -94,12 +95,14 @@ def upsert_alert(patient_id: str, metric: str, value: float) -> None:
         .is_("resolved_at", "null")
         .execute()
     )
-    if not existing.data:
-        client.table("alerts").insert({
-            "patient_id": patient_id,
-            "metric": metric,
-            "value": value,
-        }).execute()
+    if existing.data:
+        return False
+    client.table("alerts").insert({
+        "patient_id": patient_id,
+        "metric": metric,
+        "value": value,
+    }).execute()
+    return True
 
 
 def resolve_alerts_for_patient(patient_id: str) -> None:
