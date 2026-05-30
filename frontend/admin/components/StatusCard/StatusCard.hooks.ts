@@ -29,6 +29,7 @@ export function useCloudSSEStream(patientId: string) {
   const [readings, setReadings] = useState<StreamReading[]>([]);
   const [isStale, setIsStale] = useState(false);
   const esRef = useRef<EventSource | null>(null);
+  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!patientId) return;
@@ -48,18 +49,21 @@ export function useCloudSSEStream(patientId: string) {
           setLatest(data);
           setStatus(data.status as Status);
           setReadings((prev) => [...prev, data].slice(-60));
-        } catch {}
+        } catch (err) {
+          console.warn("[SSE] Parse error:", err);
+        }
       };
 
       es.onerror = () => {
         setStatus("connecting");
         es.close();
-        setTimeout(connect, 3000);
+        reconnectRef.current = setTimeout(connect, 3000);
       };
     }
 
     connect();
     return () => {
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
       esRef.current?.close();
     };
   }, [patientId]);
