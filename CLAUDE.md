@@ -1106,6 +1106,116 @@ Total latency: ~25 s from power-off to badge update. No manual page refresh requ
 
 ---
 
+## Architectural Design Decisions (Audit-Verified, 2026-05-30)
+
+These three points were reviewed and intentionally kept as-is. Do not treat them as bugs or missing features — they are documented design decisions. Defer to the thesis report for the full rationale.
+
+### 1. 1 Hz Sampling Rate — Intentional Clinical Alignment
+
+The ESP32 publishes one JSON reading per second over MQTT. This is **not** a bandwidth-saving shortcut.
+
+- The MAX30102 computes SpO₂ and BPM internally by averaging over multiple cardiac cycles — the register does not update meaningfully faster than 1–2 Hz regardless of polling rate.
+- The MLX90614 thermopile has a ~35–50 ms measurement cycle; sub-second publishing produces no new thermal information.
+- 1 Hz matches the reporting cadence of commercial bedside monitors (Philips IntelliVue, GE CARESCAPE) and continuous non-invasive monitoring guidelines.
+- `slowapi` 5 req/s ceiling on `POST /api/readings` is a defence-in-depth guard against a misbehaving bridge process, not a bottleneck on normal single-patient operation. In a theoretical multi-patient deployment (outside FYP scope) this limit would need to be keyed per-device — documented as a known single-patient assumption in the thesis Limitations section.
+
+**Do not add MCU-level mean filtering, higher-frequency publishing, or change the `slowapi` rate limit.**
+
+### 2. SQLite Queue — Secondary Database When Cloud Backend Is Unavailable
+
+**What SQLite protects against — cloud backend failure (Railway or InfluxDB Cloud AWS down):**
+
+```
+ESP32 → WiFi → Mosquitto → FastAPI → Local InfluxDB   ✅ unaffected
+                                  │
+                                  │  Railway down / InfluxDB Cloud 503
+                                  ▼
+                            InfluxDB Cloud  ❌  → SQLite queues the write
+```
+
+If Railway restarts, InfluxDB Cloud returns a 503, or the bedside machine's internet drops while WiFi is still up, the local pipeline (ESP32 → Mosquitto → FastAPI → Local InfluxDB) continues without interruption. Every reading that cannot reach the cloud is persisted to `sync_queue.db` (`pending_sync` table). When the cloud service recovers, the worker drains the queue in order — no readings are lost and the admin cloud view catches up automatically.
+
+**SQLite is the secondary database in this scenario** — it holds the authoritative copy of unsynced readings until InfluxDB Cloud confirms the write, at which point the row is deleted.
+
+**What SQLite does NOT protect against — WiFi / LAN failure:**
+
+If the WiFi access point goes down, the ESP32 loses its MQTT connection entirely. LWT fires (~22 s), the session closes, and no new readings reach FastAPI. The SQLite queue never grows because readings are lost at the transport layer before they can be enqueued. This is handled by the LWT + session close path, not by SQLite.
+
+The two mechanisms guard orthogonal failure modes:
+| Failure | LWT fires? | SQLite queues? |
+|---|---|---|
+| Railway / InfluxDB Cloud down (internet side) | ❌ No | ✅ Yes |
+| WiFi AP down (LAN side) | ✅ Yes | ❌ No new reads arrive |
+
+**Deployment assumption:** The bedside machine (running Mosquitto, FastAPI, InfluxDB) is assumed to be connected via wired Ethernet to the hospital LAN. This maintains LAN/WAN separation — WiFi is the ESP32's transport only. Deploying the bedside machine on the same WiFi AP as the ESP32 collapses this separation and removes the SQLite resilience guarantee; document this in the thesis Assumptions section.
+
+**Known flat-retry limitation:** `sync.py` currently uses a flat 5 s backoff on cloud write failures. Under a very large backlog, this drains slowly (~1 record / 5 s). The correct fix (chunked batch writes + exponential backoff referencing `Retry-After` headers) is documented as Future Work — do not implement it now.
+
+**Do not refactor `sync.py` to add exponential backoff or chunked batching.** If the requirement changes, implement it in a dedicated PR with integration tests against the rate-limit response headers.
+
+### 3. XGBoost Static Features — Intentional Two-Layer Temporal Split
+
+The local ML model uses 5 static features per reading with no rolling window (`BPM`, `Temperature`, `SpO₂`, `temp_deviation`, `hr_spo2_ratio`). This is **not** a shortcut; it is a constraint-driven architectural partition:
+
+| Layer | Temporal scope | Mechanism | Latency |
+|---|---|---|---|
+| XGBoost (local) | Per-reading | Static 5-feature vector | < 5 ms |
+| Claude API summary (cloud) | Hours / days | Narrative over full InfluxDB slice | On-demand |
+| Clinical Copilot (cloud) | Alert event window | Multi-turn CDSS reasoning | On-demand |
+
+Refactoring to LSTM or rolling-window features would require:
+1. A sequential labelled dataset (the Kaggle training set provides per-snapshot labels, not sequences — retraining would be methodologically invalid without a different dataset).
+2. Stateful rolling-window management on the gateway — which breaks across FastAPI restarts and introduces coupling with InfluxDB.
+3. Non-deterministic inference latency due to GIL contention with FastAPI's event loop.
+
+Macro temporal analysis is already covered — and covered better — by the Claude API layer, which reasons over arbitrary time windows and produces clinically coherent narratives that any ML classifier would fail to match.
+
+**Do not add rolling window features, LSTM, or any stateful ML pipeline to `backend/local/`.** The current two-layer design is the correct architecture for this latency-constrained gateway context and should be defended at the viva as an intentional design decision.
+
+---
+
+## Known System Limitations (FYP Scope)
+
+These are honest, thesis-documented limitations of the current implementation. They are not bugs — they reflect deliberate scope decisions for a single-patient FYP prototype. Do not attempt to fix them without an explicit feature request.
+
+### 1. Single Patient Per Bedside Machine
+
+`app.state.active_patient_id` is a single in-memory value in `backend/local/main.py`. Only one patient can be actively monitored per bedside machine at a time. A second nurse logging in on the same machine would silently overwrite the active patient.
+
+**Thesis statement:** "The bedside backend is scoped to single-patient monitoring — a deliberate simplification appropriate for a ward-side FYP prototype. Multi-patient support would require per-device session isolation and is documented as Future Work."
+
+### 2. In-Memory Session State Lost on Restart
+
+`app.state.active_patient_id` and `app.state.last_reading_at` live in FastAPI process memory. If the local FastAPI server restarts (OS reboot, crash, redeployment), both values are cleared. The nurse must log in again and any in-progress session will not auto-resume.
+
+**Thesis statement:** "Session state is not persisted to disk. A FastAPI restart requires the nurse to re-authenticate. In a production system, active session state would be stored in a persistent store (e.g. Redis or the existing Supabase sessions table) so restarts are transparent."
+
+### 3. Bedside Machine Must Be on Wired Ethernet
+
+The SQLite cloud sync resilience model assumes the bedside machine maintains a stable wired Ethernet connection to the hospital LAN. If the bedside machine and the ESP32 share the same WiFi AP, a WiFi failure kills both the sensor transport and the internet path simultaneously — collapsing the LAN/WAN separation that the SQLite queue depends on.
+
+**Thesis statement:** "The system assumes the bedside gateway is a fixed wired node — standard practice for clinical equipment. Deploying the gateway on WiFi alongside the sensor removes the resilience guarantee and is a known deployment constraint."
+
+### 4. ~22-Second Reading Gap on Abrupt Device Disconnect
+
+MQTT LWT fires after the broker's keepalive window (~22 s) when the ESP32 loses power or WiFi. Readings during this window are never received by FastAPI and are permanently absent from local InfluxDB — a brief gap appears in the time-series. The ESP32 has no local storage to buffer these readings.
+
+**Thesis statement:** "Abrupt device disconnection leaves up to ~22 seconds of readings unrecorded — the MQTT LWT detection window. ESP32-side SPIFFS buffering with session pause-resume logic would close this gap but requires a significant state machine rewrite; documented as Future Work."
+
+### 5. SQLite Flat Retry Under Large Cloud Backlog
+
+`sync.py` retries failed cloud writes with a flat 5 s backoff, one record at a time. Under a large backlog (e.g. hours of cloud downtime), the drain rate is ~1 record / 5 s. The correct fix — chunked batch writes (500 records/write) + exponential backoff referencing `Retry-After` headers — is documented as Future Work and not implemented.
+
+**Thesis statement:** "The sync worker uses a flat 5-second retry. Under a sustained cloud outage, backlog drain is slow. Chunked batching with exponential backoff is the production-grade fix and is deferred as Future Work."
+
+### 6. InfluxDB Cloud Free-Tier Constraints
+
+InfluxDB Cloud (free tier) imposes a 5 MB / 5-minute write limit and 30-day data retention. At 1 reading/second (≈ 150–200 bytes each), normal operation uses well under this limit. However, a large SQLite backlog replaying at full speed could approach the write ceiling. The 30-day retention means readings older than one month are automatically deleted.
+
+**Thesis statement:** "The cloud time-series store runs on InfluxDB Cloud's free tier, which caps write throughput and retains data for 30 days. A production deployment would require a paid tier with configurable retention and higher write limits."
+
+---
+
 ## Deployment Reference
 
 ### Bedside Machine
@@ -1183,3 +1293,7 @@ cd firmware && python mqtt_bridge.py
 - `useCloudSSEStream` returns `isStale: boolean` — `true` when the latest reading's `ts` is >15 s behind wall-clock. The cloud SSE re-sends the last InfluxDB reading every 2 s, so a frozen `ts` is the reliable offline signal.
 - Admin `patient/[id]/page.tsx` uses stale-aware session polling: 5 s when `isStale = true` (aggressive catch after device disconnect), 30 s when `isStale = false` (cheap safety net during normal operation). Do not collapse back to a single fixed-interval poll.
 - The `sessions_realtime` migration (`20260529000000_sessions_realtime.sql`) must be run once in the Supabase SQL editor. The `ALTER PUBLICATION` line may error with "already a member" if it was applied via the dashboard — that is safe to ignore. The `ALTER TABLE sessions REPLICA IDENTITY FULL` line is the important one.
+- **Do not change the 1 Hz ESP32 publish rate or the `slowapi` 5 req/s ceiling** — both are intentional clinical and single-patient-scope design choices; see "Architectural Design Decisions" section.
+- **Do not refactor `sync.py` to add exponential backoff or chunked batch uploads** — the flat 5 s retry is a documented Future Work item, not an unfinished implementation; see "Architectural Design Decisions" section.
+- **SQLite `sync_queue.db` is the secondary database for cloud backend failures** (Railway down, InfluxDB Cloud AWS unavailable) — it does NOT protect against WiFi/LAN failure; that is handled by LWT + session close. Do not conflate the two failure modes.
+- **Do not add rolling-window features, LSTM, or any stateful ML pipeline to `backend/local/`** — static XGBoost features are an intentional constraint-driven design; macro temporal analysis belongs to the Claude API layer; see "Architectural Design Decisions" section.
