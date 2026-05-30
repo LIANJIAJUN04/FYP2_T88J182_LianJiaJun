@@ -134,13 +134,13 @@ No way to reach `/dashboard` without an active patient. Direct URL access redire
 MediSync/
 ├── firmware/
 │   ├── main/
-│   │   ├── main.ino                 # Main loop — USB serial JSON output (WiFi/MQTT pending)
+│   │   ├── main.ino                 # Main loop — WiFi + MQTT publish every 1 s; USB serial remains as legacy dev path
 │   │   ├── config.h                 # Pins, WiFi credentials, MQTT broker IP + topic
 │   │   └── sensors.h                # sensorsBegin/Update, readSpO2/BPM/Temperature
 │   ├── i2c_scan/
 │   │   ├── i2c_scan.ino             # Utility — scan I2C bus, verify 0x57/0x5A
 │   │   └── config.h                 # SDA/SCL pins
-│   ├── serial_bridge.py             # Current transport — USB Serial → FastAPI; SerialException + idle disconnect detection
+│   ├── serial_bridge.py             # Deprecated — USB Serial bridge; ESP32 now runs WiFi + MQTT exclusively
 │   └── mqtt_bridge.py               # Phase 8 WiFi transport — LWT subscriber + readings forwarder
 │
 ├── backend/
@@ -150,6 +150,7 @@ MediSync/
 │   │   ├── supabase_client.py       # Supabase client (patient + session ops)
 │   │   ├── sync.py                  # Async queue + cloud sync worker
 │   │   ├── status.py                # Rule-based status logic
+│   │   ├── notifications.py         # Telegram + SMTP email alert sender (fire-and-forget)
 │   │   ├── routers/
 │   │   │   ├── readings.py          # POST /api/readings (stamps last_reading_at)
 │   │   │   ├── stream.py            # GET /api/stream (SSE)
@@ -379,6 +380,15 @@ SUPABASE_SERVICE_KEY=your-service-key
 
 NURSE_PASSWORD=shared-nurse-password
 DEVICE_SECRET=esp32
+
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+TELEGRAM_CHAT_ID=your-chat-id
+
+ADMIN_EMAIL=admin@example.com
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=sender@gmail.com
+SMTP_PASSWORD=your-gmail-app-password
 ```
 
 ### Cloud Backend (`backend/cloud/.env` / Railway)
@@ -919,8 +929,9 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 - [x] Implement main loop every 1s — serialise JSON and publish to `medisync/readings`
 - [x] Include `device_secret` and `device_id` fields inside the JSON payload (MQTT has no HTTP headers)
 - [x] Update LED logic — green = WiFi + MQTT + sensor OK, red = any failure
-- [ ] Flash, verify via MQTT broker logs and Serial Monitor
-- [ ] Confirm readings in local InfluxDB with correct `patient_id` tag and `status` field
+- [x] Flash ESP32 with WiFi credentials via Arduino IDE
+- [x] Verify readings appear in MQTT broker logs and Serial Monitor
+- [x] Confirm readings in local InfluxDB with correct `patient_id` tag and `status` field
 
 **Transport (WiFi MQTT):** ESP32 connects to Mosquitto on the bedside LAN and publishes readings every 1s. LWT configured on `medisync/status` with `keepalive=15` — broker broadcasts `{"status":"offline"}` within ~22 s of abrupt power loss. `mqtt_bridge.py` catches this and calls `/api/device/disconnect`. MQTT was chosen for the FYP open-source pipeline requirement (O1/H1) and latency ~15–50ms.
 
@@ -941,6 +952,8 @@ python mqtt_bridge.py   # subscribes to medisync/readings + medisync/status on l
 ```
 
 **Done when:** Bedside StatusCard and chart update every second with real sensor values via MQTT, and unplugging power closes the session within ~22 s via LWT.
+
+**Completed:** 2026-05-30 — `main.ino` implements WiFi auto-reconnect, MQTT with LWT (`keepalive=15`), JSON publish every 1 s, `device_id`/`device_secret` in payload, LED status logic. `mqtt_bridge.py` subscribes to `medisync/readings` + `medisync/status` LWT and calls `/api/device/disconnect` on offline event. Mosquitto added to `docker-compose.yml`. End-to-end verified: ESP32 connects (IP=10.167.101.181), readings flow through Mosquitto → `mqtt_bridge.py` → FastAPI → local InfluxDB at ~1 s intervals (`[bridge] ok (normal) | SpO2=99 BPM=75 Temp=35.8`).
 
 ---
 
@@ -1069,6 +1082,30 @@ Total latency: ~25 s from power-off to badge update. No manual page refresh requ
 
 ---
 
+### Phase 13 — Alert Notifications (Telegram + Email) ✅
+- [x] Create `backend/local/notifications.py` — `notify_alert()` async function; sends Telegram message via Bot API (`httpx.AsyncClient`) and email via SMTP (`smtplib` + `email.mime`); both channels run concurrently with `asyncio.gather(return_exceptions=True)` so a failure in one does not block the other
+- [x] Modify `upsert_alert()` in `supabase_client.py` — returns `True` when a new alert row is inserted, `False` when an unresolved alert already exists (de-duplication gate)
+- [x] Update `routers/readings.py` — collect `upsert_alert` results; fire `asyncio.create_task(notify_alert(...))` only for new alert rows; task is fire-and-forget so the ESP32 response is not delayed
+- [x] Add env vars to `backend/local/.env`: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ADMIN_EMAIL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`
+
+**Notification triggers:**
+- `health_status == "danger"` — one notification per breached metric (SpO₂ / BPM / Temperature)
+- `prediction == "anomaly"` (ML-only) — one notification for the worst-deviation metric
+
+**Cooldown:** Built on top of `upsert_alert` de-duplication — a notification fires only once per alert event (first reading that breaches the threshold). Subsequent readings in the same danger window return `False` from `upsert_alert` and produce no notification. The next notification fires only after the patient recovers (alerts resolved) and a new danger event begins.
+
+**Graceful degradation:** If `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` are blank, Telegram is silently skipped. If any of `ADMIN_EMAIL` / `SMTP_USER` / `SMTP_PASSWORD` are blank, email is silently skipped. Either channel can be disabled independently.
+
+**Setup:**
+- Telegram: create bot via `@BotFather`, get token; start chat with bot then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` to read `chat.id`
+- Email (Gmail): enable 2-Step Verification → generate App Password at `https://myaccount.google.com/apppasswords`; use that 16-char password as `SMTP_PASSWORD`
+
+**Done when:** ML anomaly or danger reading triggers a Telegram message and email to the admin on the first occurrence; subsequent readings in the same event window do not send duplicate notifications.
+
+**Completed:** 2026-05-30 — `notifications.py` implemented; `upsert_alert` returns bool; `readings.py` gates notifications on new alert rows via `asyncio.create_task` (fire-and-forget). Telegram bot token + chat ID configured in `.env`.
+
+---
+
 ## Deployment Reference
 
 ### Bedside Machine
@@ -1111,8 +1148,14 @@ cd firmware && python mqtt_bridge.py
 - SSE endpoints must set `Content-Type: text/event-stream` and disable response buffering
 - Never use `time.sleep()` in async FastAPI — always `asyncio.sleep()`
 - Both Next.js apps are fully independent — separate `package.json`, separate deploys
-- ESP32 currently sends data via USB Serial; `serial_bridge.py` reads and POSTs to FastAPI — WiFi MQTT (Phase 8) is not yet flashed
+- ESP32 runs WiFi + MQTT exclusively — `serial_bridge.py` (USB serial) is deprecated and no longer used; the active transport is `mqtt_bridge.py` → Mosquitto → FastAPI
 - MQTT topic is `medisync/readings`; LWT topic is `medisync/status`; `device_secret` is embedded in the JSON payload (MQTT has no HTTP headers)
+- `mqtt_bridge.py` uses paho-mqtt v2 (`CallbackAPIVersion.VERSION2`) — on startup the broker replays retained messages to new subscribers; `msg.retain == 1` in `on_message` means the offline LWT is stale (stored from a previous disconnect) and must be ignored; only a live non-retained offline message means the ESP32 just lost power
+- `notifications.py` is called via `asyncio.create_task` from `readings.py` — it never blocks the ESP32 response; failures are logged as warnings, never raised
+- `upsert_alert()` returns `bool` — `True` = new alert row inserted (notification fires), `False` = unresolved alert already exists (notification suppressed). Do not remove the return value; it is the cooldown gate.
+- Notification env vars (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ADMIN_EMAIL`, `SMTP_*`) are all optional — missing vars silently skip that channel; no exception is raised
+- Gmail SMTP requires an App Password (not the account password) — generate at `https://myaccount.google.com/apppasswords` with 2-Step Verification enabled
+- ESP32 runs on a USB power bank (no computer needed) — USB was only ever needed for power and initial flashing; all data flows exclusively via WiFi + MQTT
 - Mosquitto runs in Docker alongside InfluxDB — `docker compose up -d` starts both
 - Local InfluxDB runs on host port **8087** (container port 8086) — UI at `http://localhost:8087`
 - InfluxDB Cloud free tier: 5MB/5min write limit, 30-day retention — sufficient for prototype
