@@ -465,6 +465,90 @@ See `CLAUDE.md` for the full variable reference.
 
 ---
 
+## Architecture Design Decisions & Known Limitations
+
+These three points were reviewed as part of an architectural audit (2026-05-30) and intentionally kept as-is. They are documented design decisions, not bugs or missing features. Full rationale is in the thesis report.
+
+### 1 Hz Sampling Rate — Clinically Aligned, Not a Gap
+
+The ESP32 publishes one reading per second. This matches the reporting cadence of commercial bedside monitors and the physical update rate of the sensors used:
+
+- **MAX30102** computes SpO₂ and BPM by averaging over multiple cardiac cycles — the register does not update meaningfully faster than 1–2 Hz.
+- **MLX90614** has a ~35–50 ms measurement cycle; sub-second publishing adds no new thermal information.
+
+The `slowapi` 5 req/s ceiling on `POST /api/readings` is a defence-in-depth guard against a misbehaving bridge process, not a bottleneck on normal operation. In a multi-patient deployment (outside FYP scope), the rate limit would need to be keyed per-device — documented as a known single-patient assumption.
+
+### SQLite Queue — Secondary Database for Cloud Backend Failure
+
+`sync_queue.db` (`pending_sync` table) acts as a **secondary database** when the cloud backend is unavailable — specifically when Railway restarts, InfluxDB Cloud (AWS) returns a 503, or the bedside machine's internet connection drops while the local WiFi is still up.
+
+```
+ESP32 → WiFi → Mosquitto → FastAPI → Local InfluxDB   always works
+                                  │
+                                  │  Railway down / InfluxDB Cloud 503
+                                  ▼
+                            InfluxDB Cloud  ✗  → SQLite holds the reading
+```
+
+Every reading that cannot reach InfluxDB Cloud is persisted to SQLite. When the cloud service recovers, the worker drains the queue in insertion order and deletes each row only after a confirmed write — zero data loss. The bedside display and local InfluxDB are completely unaffected throughout.
+
+**What SQLite does NOT protect against — WiFi failure:**
+
+If the WiFi access point goes down, the ESP32 loses its MQTT connection and LWT fires (~22 s), closing the session. No new readings reach FastAPI, so the SQLite queue never grows — readings are lost at the transport layer before they can be enqueued. WiFi failure is handled by the LWT + session close path.
+
+| Failure | Handled by |
+|---|---|
+| Railway restarts / InfluxDB Cloud 503 | SQLite queue — readings buffered and replayed |
+| WiFi AP down | LWT → session close — no readings arrive to buffer |
+
+**Deployment assumption:** The bedside machine is assumed to be on wired Ethernet so that WiFi state and internet state are independent failure modes. If the bedside machine shares the same WiFi AP as the ESP32, this separation collapses.
+
+**Known limitation:** The sync worker uses a flat 5 s retry (no exponential backoff, no batch writes). Under a very large backlog this drains slowly. Chunked batching + exponential backoff is documented as Future Work.
+
+### XGBoost Static Features — Intentional Two-Layer Temporal Split
+
+The local ML model uses 5 static features per reading with no rolling window. Temporal/trend analysis is handled entirely by the Claude API layer:
+
+| Layer | Temporal scope | Mechanism |
+|---|---|---|
+| XGBoost (local) | Per-reading snapshot | Static 5-feature vector, < 5 ms inference |
+| AI Health Summary (cloud) | Hours / days | Claude API narrative over full InfluxDB slice |
+| Clinical Copilot (cloud) | Alert event window | Multi-turn CDSS reasoning |
+
+Adding a rolling window or LSTM to the local gateway would introduce stateful complexity that breaks on FastAPI restarts, require retraining on a sequential dataset (the current training set provides per-snapshot labels), and add non-deterministic latency on a resource-constrained gateway. Macro temporal reasoning is already covered — and covered better — by the Claude API layer.
+
+---
+
+## Known System Limitations (FYP Scope)
+
+These are honest, scoped limitations of the current prototype — not bugs. Each has a clear Future Work path.
+
+### Single Patient Per Bedside Machine
+
+`app.state.active_patient_id` is a single in-memory value. Only one patient can be monitored per bedside machine at a time. Multi-patient support would require per-device session isolation and is Future Work.
+
+### In-Memory Session State Lost on Restart
+
+`active_patient_id` and `last_reading_at` live in FastAPI process memory. If the local server restarts, both values are cleared and the nurse must log in again. A production system would persist active session state to a durable store (Redis or Supabase) so restarts are transparent.
+
+### Bedside Machine Must Be on Wired Ethernet
+
+The SQLite resilience model requires the bedside machine to be on wired Ethernet. If the bedside machine shares the same WiFi AP as the ESP32, a WiFi failure kills both the sensor transport and the internet path simultaneously — collapsing the LAN/WAN separation the SQLite queue depends on.
+
+### ~22-Second Reading Gap on Abrupt Device Disconnect
+
+MQTT LWT fires after ~22 seconds when the ESP32 loses power or WiFi. Readings during this window never reach FastAPI and are permanently absent from local InfluxDB. The ESP32 has no on-device storage to buffer them. ESP32-side SPIFFS buffering with session pause-resume logic is Future Work.
+
+### SQLite Flat Retry Under Large Cloud Backlog
+
+`sync.py` retries failed cloud writes one record at a time with a flat 5 s backoff. Under a large backlog the drain rate is slow (~1 record / 5 s). Chunked batch writes + exponential backoff referencing `Retry-After` headers is the production fix — documented as Future Work.
+
+### InfluxDB Cloud Free-Tier Constraints
+
+The cloud time-series store runs on InfluxDB Cloud's free tier: 5 MB / 5-minute write limit and 30-day data retention. A production deployment requires a paid tier with configurable retention and higher write limits.
+
+---
+
 ## Notes
 
 - ML artefacts (`ml/*.joblib`) are gitignored — retrain locally after cloning by re-running `ml/health_risk_ml.ipynb`
