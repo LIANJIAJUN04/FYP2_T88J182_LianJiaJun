@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" width="240" height="64">
+  <defs>
+    <linearGradient id="iconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4cd7f6"/>
+      <stop offset="100%" stop-color="#03b5d3"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="64" height="64" rx="14" ry="14" fill="url(#iconGrad)"/>
+  <g transform="translate(16,16) scale(1.333)"
+     stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
+  </g>
+  <text x="80" y="44"
+        font-family="'Plus Jakarta Sans', 'Inter', Arial, sans-serif"
+        font-size="30" font-weight="800" letter-spacing="-0.5">
+    <tspan fill="#e4e2e4">Medi</tspan><tspan fill="#4cd7f6">Sync</tspan>
+  </text>
+</svg>

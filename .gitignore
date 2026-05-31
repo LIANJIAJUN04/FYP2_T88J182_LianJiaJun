@@ -49,3 +49,6 @@ influxdb_data/
 # Local planning notes (not for repo)
 fyp_todo.md
 github_files_todo.md
+
+# Runtime SQLite queue — not source code
+backend/local/sync_queue.db
