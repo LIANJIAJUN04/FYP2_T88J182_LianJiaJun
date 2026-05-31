@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from influxdb_client import InfluxDBClient
@@ -66,6 +67,53 @@ from(bucket: "{_influx_bucket}")
         for record in table.records:
             return _record_to_reading(record)
     return None
+
+
+def get_open_sessions() -> list[dict]:
+    """Return all sessions where ended_at IS NULL (device still considered active)."""
+    result = (
+        supabase.table("sessions")
+        .select("id, patient_id, started_at")
+        .is_("ended_at", "null")
+        .execute()
+    )
+    return result.data
+
+
+def get_last_reading_time(patient_id: str) -> datetime | None:
+    """Return the UTC datetime of the most recent reading in the last 30 minutes, or None."""
+    _validate_uuid(patient_id)
+    flux = f"""
+from(bucket: "{_influx_bucket}")
+  |> range(start: -30m)
+  |> filter(fn: (r) => r._measurement == "health_readings")
+  |> filter(fn: (r) => r.patient_id == "{patient_id}")
+  |> keep(columns: ["_time"])
+  |> sort(columns: ["_time"], desc: true)
+  |> limit(n: 1)
+"""
+    tables = _query_api.query(flux, org=_influx_org)
+    for table in tables:
+        for record in table.records:
+            return record.get_time()
+    return None
+
+
+def close_session_by_id(session_id: str, started_at_iso: str, reason: str = "auto_timeout") -> None:
+    """Stamp ended_at, compute duration_seconds, and set closed_reason on a specific session row."""
+    now = datetime.now(timezone.utc)
+    raw = started_at_iso
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    started = datetime.fromisoformat(raw)
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    duration = max(0, int((now - started).total_seconds()))
+    supabase.table("sessions").update({
+        "ended_at": now.isoformat(),
+        "duration_seconds": duration,
+        "closed_reason": reason,
+    }).eq("id", session_id).execute()
 
 
 def get_history(patient_id: str, start: str, stop: str) -> list[dict]:
