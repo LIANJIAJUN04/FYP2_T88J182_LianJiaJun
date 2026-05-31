@@ -2,26 +2,45 @@
 
 ## Rules for Claude Code
 
-- **Never run `git push` or any GitHub/remote operations.** The user handles all pushes and PRs themselves. Only commit locally — never push.
+- **Never run `git push` or any GitHub/remote operations.** The user handles all pushes and PRs themselves. Only commit on the bedside machine — never push.
 
 ---
 
 ## Project Overview
 
-A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and temperature sensors transmits readings via WiFi using the MQTT protocol to a local Mosquitto broker on the bedside machine. Readings are written locally for low-latency bedside display, and synced asynchronously to the cloud for remote admin monitoring. Each patient has their own session and isolated reading history in InfluxDB via `patient_id` tagging.
+A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and temperature sensors transmits readings via WiFi using the MQTT protocol to a bedside Mosquitto broker. Readings are written on the bedside machine for low-latency bedside display, and synced asynchronously to the cloud for remote admin monitoring. Each patient has their own session and isolated reading history in InfluxDB via `patient_id` tagging.
+
+---
+
+## Hypotheses & Objectives
+
+All three hypotheses and five objectives are **Supported — empirically validated**.
+
+| | Statement | Verdict | Key metric |
+|---|---|---|---|
+| **H1** | Bedside path achieves real-time performance (SLA: P95 < 2 000 ms) | ✅ Supported | P95 = 1 172.5 ms — 600 samples, 2026-05-30 |
+| **H2** | Hybrid edge–cloud achieves lower latency than cloud-only path | ✅ Supported | 1.68× lower mean (620 ms vs 1 040 ms), 1.64× lower P95 |
+| **H3** | Bedside monitoring survives cloud outages and backend restarts | ✅ Supported | 100% SSE uptime (60/60); SQLite crash-recovery proven |
+| **O1** | Alert notifications delivered within seconds, non-blocking, deduplicated | ✅ Supported | API response 100–180 ms; fire-and-forget confirmed |
+| **O2** | Independent authentication enforced at every access boundary | ✅ Supported | All 6 boundary tests pass; local rejections < 2 ms |
+| **O3** | Full pipeline implemented exclusively on open-source components | ✅ Supported | 13 components — MIT / Apache 2.0 / EPL; zero proprietary dependency |
+| **O4** | AI CDSS streaming TTFB within threshold for clinical use | ✅ Supported | Total TTFB P95 = 7 698 ms < 10 000 ms SLA — 20 samples |
+| **O5** | Patient session closes within 30 s of physical device power-off | ✅ Supported | Session closes at T+22 s via MQTT LWT; badge updates at T+25 s |
+
+Measurement scripts and raw results live in `measurements/`. Full evaluation narrative was recorded in `hypothesis_evaluation.md` (now removed — summaries above are the canonical reference).
 
 ---
 
 ## Two Display Modes
 
-| | Bedside (Local) | Admin (Cloud) |
+| | Bedside | Admin (Cloud) |
 |---|---|---|
 | Connection | WiFi + MQTT to bedside machine | Internet, anywhere |
-| Latency | ~20ms | 1–3s |
+| Latency | Mean 620ms · P95 1173ms (measured) | Mean 1040ms · P95 1918ms (measured) |
 | Auth | Shared nurse password | Supabase Auth (email + password) |
 | Frontend | Next.js on localhost | Next.js on Vercel |
-| Reads from | Local InfluxDB | InfluxDB Cloud |
-| Backend | Local FastAPI (localhost) | FastAPI on Railway |
+| Reads from | Bedside InfluxDB | InfluxDB Cloud |
+| Backend | Bedside FastAPI (localhost) | FastAPI on Railway |
 
 ---
 
@@ -32,7 +51,7 @@ A real-time IoT patient health monitoring system. An ESP32 with SpO₂, BPM, and
 | Firmware | ESP32, Arduino framework | Device |
 | MQTT broker | Mosquitto (Docker) | Bedside machine (port 1883) |
 | MQTT bridge | Python (`mqtt_bridge.py`) | Bedside machine |
-| Local backend | FastAPI | Bedside machine (localhost:8000) |
+| Bedside backend | FastAPI | Bedside machine (localhost:8000) |
 | Cloud backend | FastAPI | Railway |
 | Time-series (local) | InfluxDB via Docker | Bedside machine (localhost:8087) |
 | Time-series (cloud) | InfluxDB Cloud (Singapore region) | Cloud |
@@ -61,7 +80,7 @@ Two buttons — **Patient** or **Admin**. This is the root of both apps but beha
 
 New Patient
   └──► Nurse fills registration form
-            └──► POST to local FastAPI
+            └──► POST to bedside FastAPI
                       └──► Creates patient in Supabase
                            Opens new session in Supabase
                            Sets active_patient_id in FastAPI memory
@@ -146,7 +165,7 @@ MediSync/
 ├── backend/
 │   ├── local/                       # Runs on bedside machine
 │   │   ├── main.py                  # FastAPI app, holds active_patient_id state
-│   │   ├── database.py              # Local InfluxDB client
+│   │   ├── database.py              # Bedside InfluxDB client
 │   │   ├── supabase_client.py       # Supabase client (patient + session ops)
 │   │   ├── sync.py                  # Async queue + cloud sync worker
 │   │   ├── status.py                # Rule-based status logic
@@ -233,6 +252,19 @@ MediSync/
 │       ├── 20260511000000_initial_schema.sql   # patients, sessions, alerts
 │       └── 20260528000000_sessions_duration.sql # duration_seconds + closed_reason columns
 │
+├── measurements/                    # Empirical validation scripts and results
+│   ├── latency_measure.py           # H1: bedside end-to-end latency (bridge_ts → SSE receipt)
+│   ├── latency_results.md           # H1 results: 600 samples, P95 = 1 172.5 ms
+│   ├── latency_measure_cloud.py     # H2: cloud-only latency measurement
+│   ├── latency_results_cloud.md     # H2 results: 300 samples, P95 = 1 917.7 ms
+│   ├── measure_h3_resilience.py     # H3: SSE uptime + SQLite crash-recovery
+│   ├── h3_resilience_results.md     # H3 results: 100% SSE uptime (60/60)
+│   ├── measure_o1_notifications.py  # O1: notification latency + dedup
+│   ├── o1_notification_results.md   # O1 results: 100–180 ms API response
+│   ├── measure_o2_auth.py           # O2: all 6 auth boundary tests
+│   ├── o2_auth_results.md           # O2 results: all pass, local rejections < 2 ms
+│   ├── measure_o4_cdss_ttfb.py      # O4: AI CDSS streaming TTFB
+│   └── o4_cdss_results.md           # O4 results: P95 = 7 698 ms < 10 000 ms SLA
 ├── docker-compose.yml
 ├── start-bedside.sh                 # One-command bedside startup
 └── README.md
@@ -339,12 +371,14 @@ data: {
   "prediction": "normal",
   "confidence": 0.6096,
   "alert": false,
-  "ts": "2025-05-06T10:00:01Z"
+  "ts": "2025-05-06T10:00:01Z",
+  "bridge_ts": "2025-05-06T10:00:00.812Z"
 }
 ```
 
 `prediction` — ML model result: `"normal"` or `"anomaly"` (Phase 9).  
-`confidence` — probability of the predicted class (0–1). `0.0` when model not loaded or SpO₂ unavailable.
+`confidence` — probability of the predicted class (0–1). `0.0` when model not loaded or SpO₂ unavailable.  
+`bridge_ts` — UTC ISO timestamp stamped by `mqtt_bridge.py` at MQTT receive time. Used by `latency_measure.py` for H1 end-to-end latency measurement. `null` if the reading did not arrive via MQTT (e.g. direct API POST).
 
 ### Status Colours (Frontend)
 
@@ -445,7 +479,7 @@ No config file needed — edit constants at the top of the script.
 
 ## API Contract
 
-### Local FastAPI (`localhost:8000`)
+### Bedside FastAPI (`localhost:8000`)
 
 #### POST `/api/patients`
 ```json
@@ -485,7 +519,7 @@ No config file needed — edit constants at the top of the script.
 { "status": "ok", "health_status": "normal", "prediction": "normal", "confidence": 0.6096, "alert": false }
 ```
 
-Internally: run `get_status()`, run ML inference, apply OOD safety override (if `health_status == "danger"` and ML says `"normal"`, force `prediction = "anomaly"` and flip confidence), write to local InfluxDB with `status` + `confidence` fields + `patient_id` tag, queue cloud sync, stamp `app.state.last_reading_at` for heartbeat watchdog.
+Internally: run `get_status()`, run ML inference, apply OOD safety override (if `health_status == "danger"` and ML says `"normal"`, force `prediction = "anomaly"` and flip confidence), write to bedside InfluxDB with `status` + `confidence` fields + `patient_id` tag, queue cloud sync, stamp `app.state.last_reading_at` for heartbeat watchdog.
 
 #### POST `/api/device/disconnect`
 ```json
@@ -615,12 +649,12 @@ CREATE TABLE alerts (
 ### Retention
 | Instance | Retention |
 |---|---|
-| Local InfluxDB | 7 days |
+| Bedside InfluxDB | 7 days |
 | InfluxDB Cloud | 30 days (free tier) |
 
 ---
 
-## Local InfluxDB Docker Setup
+## Bedside InfluxDB (Docker) Setup
 
 ```yaml
 # docker-compose.yml
@@ -690,7 +724,7 @@ async def startup():
 
 ---
 
-## Active Patient State (Local FastAPI)
+## Active Patient State (Bedside FastAPI)
 
 ```python
 # main.py
@@ -790,7 +824,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 
 ---
 
-### Phase 1 — Local InfluxDB Setup ✅
+### Phase 1 — Bedside InfluxDB Setup ✅
 - [x] Install Docker Desktop on bedside machine
 - [x] Create `docker-compose.yml`
 - [x] Run `docker compose up -d`
@@ -809,7 +843,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 - [x] Create bucket `health_cloud`, 30-day retention
 - [x] Generate API token (write + read)
 - [x] Save credentials to env files
-- [x] Test write from local Python script
+- [x] Test write from a Python script on the bedside machine
 
 **Done when:** Test point appears in InfluxDB Cloud UI.
 **Completed:** 2026-05-11 — Singapore region (ap-southeast-1); test script at `backend/local/test_influx_cloud.py`.
@@ -828,7 +862,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 
 ---
 
-### Phase 4 — Local FastAPI Backend ✅
+### Phase 4 — Bedside FastAPI Backend ✅
 - [x] Set up `backend/local/` — FastAPI, `influxdb-client`, `supabase-py`, `python-dotenv`
 - [x] Implement `status.py` — `get_status(spo2, bpm, temperature)` returns `normal / warning / danger`
 - [x] Implement `app.state.active_patient_id = None`
@@ -836,7 +870,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 - [x] Implement `POST /api/session/login` — validate IC + nurse password, open session, set active patient
 - [x] Implement `POST /api/session/logout` — clear active patient, close session
 - [x] Implement `GET /api/session/active` — return current patient or null
-- [x] Implement `POST /api/readings` — run `get_status()`, tag with patient_id, write local InfluxDB, queue cloud sync
+- [x] Implement `POST /api/readings` — run `get_status()`, tag with patient_id, write bedside InfluxDB, queue cloud sync
 - [x] Implement `GET /api/stream` — SSE, stream latest reading every 1s including `status` field
 - [x] Implement `cloud_sync_worker` background task
 - [x] Add `X-Device-Secret` check in readings router
@@ -849,7 +883,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 
 ### Phase 5 — Cloud FastAPI Backend ✅
 - [x] Set up `backend/cloud/` — FastAPI, `influxdb-client`, `supabase-py`
-- [x] Copy `status.py` from local backend
+- [x] Copy `status.py` from bedside backend
 - [x] Implement Supabase Auth JWT middleware (`auth.py` — `require_auth` dependency, accepts Bearer header or `?token=` query param for SSE)
 - [x] Implement `GET /api/patients`
 - [x] Implement `GET /api/patients/:id`
@@ -885,7 +919,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 - [x] Run `npm run dev`
 
 **Done when:** Full nurse flow — register → dashboard → StatusCard updates live → logout → index.
-**Completed:** 2026-05-11 — Next.js 16 on `localhost:3001` (3000 occupied); uses `proxy.ts` named export instead of deprecated `middleware.ts`; dark navy UI with Framer Motion animations, SVG arc gauges, Recharts live chart with SpO₂/BPM/Temp tabs; SSE auto-reconnects after 3s; CORS updated in local backend to allow both ports 3000 and 3001; startup script at `start-bedside.sh`.
+**Completed:** 2026-05-11 — Next.js 16 on `localhost:3001` (3000 occupied); uses `proxy.ts` named export instead of deprecated `middleware.ts`; dark navy UI with Framer Motion animations, SVG arc gauges, Recharts live chart with SpO₂/BPM/Temp tabs; SSE auto-reconnects after 3s; CORS updated in bedside backend to allow both ports 3000 and 3001; startup script at `start-bedside.sh`.
 
 ---
 
@@ -931,7 +965,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 - [x] Update LED logic — green = WiFi + MQTT + sensor OK, red = any failure
 - [x] Flash ESP32 with WiFi credentials via Arduino IDE
 - [x] Verify readings appear in MQTT broker logs and Serial Monitor
-- [x] Confirm readings in local InfluxDB with correct `patient_id` tag and `status` field
+- [x] Confirm readings in bedside InfluxDB with correct `patient_id` tag and `status` field
 
 **Transport (WiFi MQTT):** ESP32 connects to Mosquitto on the bedside LAN and publishes readings every 1s. LWT configured on `medisync/status` with `keepalive=15` — broker broadcasts `{"status":"offline"}` within ~22 s of abrupt power loss. `mqtt_bridge.py` catches this and calls `/api/device/disconnect`. MQTT was chosen for the FYP open-source pipeline requirement (O1/H1) and latency ~15–50ms.
 
@@ -942,7 +976,7 @@ This ensures ML never contradicts an obvious danger already caught by the rule e
 4. Select board: **ESP32 Dev Module** — Tools → Board → esp32
 5. Flash (`Ctrl+U`) — watch Serial Monitor at 115200 baud for `[wifi] Connected` then `[mqtt] ok`
 6. Start `docker compose up -d` (Mosquitto) and `python firmware/mqtt_bridge.py` on the bedside machine
-7. Verify readings in local InfluxDB and bedside dashboard
+7. Verify readings in bedside InfluxDB and bedside dashboard
 
 **MQTT bridge usage:**
 ```bash
@@ -953,7 +987,7 @@ python mqtt_bridge.py   # subscribes to medisync/readings + medisync/status on l
 
 **Done when:** Bedside StatusCard and chart update every second with real sensor values via MQTT, and unplugging power closes the session within ~22 s via LWT.
 
-**Completed:** 2026-05-30 — `main.ino` implements WiFi auto-reconnect, MQTT with LWT (`keepalive=15`), JSON publish every 1 s, `device_id`/`device_secret` in payload, LED status logic. `mqtt_bridge.py` subscribes to `medisync/readings` + `medisync/status` LWT and calls `/api/device/disconnect` on offline event. Mosquitto added to `docker-compose.yml`. End-to-end verified: ESP32 connects (IP=10.167.101.181), readings flow through Mosquitto → `mqtt_bridge.py` → FastAPI → local InfluxDB at ~1 s intervals (`[bridge] ok (normal) | SpO2=99 BPM=75 Temp=35.8`).
+**Completed:** 2026-05-30 — `main.ino` implements WiFi auto-reconnect, MQTT with LWT (`keepalive=15`), JSON publish every 1 s, `device_id`/`device_secret` in payload, LED status logic. `mqtt_bridge.py` subscribes to `medisync/readings` + `medisync/status` LWT and calls `/api/device/disconnect` on offline event. Mosquitto added to `docker-compose.yml`. End-to-end verified: ESP32 connects (IP=10.167.101.181), readings flow through Mosquitto → `mqtt_bridge.py` → FastAPI → bedside InfluxDB at ~1 s intervals (`[bridge] ok (normal) | SpO2=99 BPM=75 Temp=35.8`).
 
 ---
 
@@ -1021,12 +1055,12 @@ Graceful degradation: if `ml/*.joblib` files are missing, `prediction` defaults 
 ---
 
 ### Phase 10 — Polish & Hardening ✅
-- [x] Persist sync queue to local SQLite — survive server restarts (`sync.py` — `pending_sync` table, crash-recovery on startup)
+- [x] Persist sync queue to bedside SQLite — survive server restarts (`sync.py` — `pending_sync` table, crash-recovery on startup)
 - [x] Frontend SSE auto-reconnect after 3s (both bedside and admin `StatusCard.hooks.ts`)
 - [x] Alert writes to Supabase `alerts` table when status = danger or ML prediction = anomaly
 - [x] Admin dashboard shows unresolved alert count in nav (pulsing red badge, hides when zero)
 - [x] Add `/health` endpoint to both FastAPI instances
-- [x] Rate limiting on local API (5 req/s) — `slowapi`, applied to `POST /api/readings`
+- [x] Rate limiting on bedside API (5 req/s) — `slowapi`, applied to `POST /api/readings`
 - [x] README in each subfolder (`firmware/`, `backend/local/`, `backend/cloud/`, `frontend/bedside/`, `frontend/admin/`, `ml/`)
 
 **Completed:** 2026-05-26 — SQLite persistence via `sync_queue.db` with crash-recovery; `slowapi` rate limiter on readings endpoint; alert count badge in admin navbar (pulsing red, hidden when zero); project-level READMEs for all subfolders.
@@ -1136,11 +1170,11 @@ cd firmware && python mqtt_bridge.py
 
 ## Notes for Claude Code
 
-- `model.pkl` is gitignored — retrain locally after cloning
+- `model.pkl` is gitignored — retrain on the bedside machine after cloning
 - ML model loaded once at startup (`app.state.ml_model`), never per-request
-- `app.state.active_patient_id` is in-memory — restarting local FastAPI clears it, nurse must log in again
+- `app.state.active_patient_id` is in-memory — restarting bedside FastAPI clears it, nurse must log in again
 - `app.state.last_reading_at` is the heartbeat timestamp — set on every accepted `POST /api/readings`; `None` if no reading yet or after session close
-- `status.py` is identical in both local and cloud backends — keep them in sync manually or extract to a shared `lib/` folder
+- `status.py` is identical in both bedside and cloud backends — keep them in sync manually or extract to a shared `lib/` folder
 - Rule-based `StatusCard` works from Phase 4 with zero ML — do not block it on Phase 9
 - ML features are **static per-reading** (no rolling window) — BPM, Temperature, SpO₂, temp_deviation, hr_spo2_ratio
 - OOD safety override: if `health_status == "danger"` and ML says `"normal"`, `readings.py` forces `prediction = "anomaly"` and flips confidence — do not remove this guard
@@ -1157,7 +1191,7 @@ cd firmware && python mqtt_bridge.py
 - Gmail SMTP requires an App Password (not the account password) — generate at `https://myaccount.google.com/apppasswords` with 2-Step Verification enabled
 - ESP32 runs on a USB power bank (no computer needed) — USB was only ever needed for power and initial flashing; all data flows exclusively via WiFi + MQTT
 - Mosquitto runs in Docker alongside InfluxDB — `docker compose up -d` starts both
-- Local InfluxDB runs on host port **8087** (container port 8086) — UI at `http://localhost:8087`
+- Bedside InfluxDB runs on host port **8087** (container port 8086) — UI at `http://localhost:8087`
 - InfluxDB Cloud free tier: 5MB/5min write limit, 30-day retention — sufficient for prototype
 - Nurse password is a single shared secret in `.env` — not per-nurse, not stored in DB
 - Cloud backend on Railway needs `CLOUD_INFLUX_ORG` and `CLOUD_INFLUX_BUCKET` set explicitly — they do not default
@@ -1183,3 +1217,12 @@ cd firmware && python mqtt_bridge.py
 - `useCloudSSEStream` returns `isStale: boolean` — `true` when the latest reading's `ts` is >15 s behind wall-clock. The cloud SSE re-sends the last InfluxDB reading every 2 s, so a frozen `ts` is the reliable offline signal.
 - Admin `patient/[id]/page.tsx` uses stale-aware session polling: 5 s when `isStale = true` (aggressive catch after device disconnect), 30 s when `isStale = false` (cheap safety net during normal operation). Do not collapse back to a single fixed-interval poll.
 - The `sessions_realtime` migration (`20260529000000_sessions_realtime.sql`) must be run once in the Supabase SQL editor. The `ALTER PUBLICATION` line may error with "already a member" if it was applied via the dashboard — that is safe to ignore. The `ALTER TABLE sessions REPLICA IDENTITY FULL` line is the important one.
+- `POST /api/readings` has **no rate limiter** — the `@limiter.limit` decorator was removed. The endpoint is secured solely by `X-Device-Secret` header authentication. Do not re-add rate limiting to this endpoint; it causes false 429s during MQTT reconnect bursts from a trusted device.
+- `sync.py` cloud worker uses `InfluxDBClientAsync` (aiohttp) — one persistent connection pool, native async, 60 s timeout. Do not revert to the synchronous `InfluxDBClient` with `SYNCHRONOUS` write mode; that creates a new TLS handshake to InfluxDB Cloud on every reading and causes intermittent timeouts.
+- ESP32 `connectWiFi()` sets three stability flags: `WiFi.persistent(false)` (no flash writes on reconnect), `WiFi.setAutoReconnect(true)` (hardware-level reconnect on AP drop), `WiFi.setSleep(false)` (disables modem sleep — the primary cause of random MQTT disconnects). Do not remove these; without `setSleep(false)` the WiFi radio powers off periodically and drops MQTT keepalives.
+- `bridge_ts` is a UTC ISO timestamp stamped in `mqtt_bridge.py` at MQTT receive time. It flows through `ReadingIn` → `app.state.last_reading` → bedside SSE payload, and via `enqueue_reading()` → `sync.py` → InfluxDB Cloud as a string field. It is used by `measurements/latency_measure.py` (H1) to compute bedside end-to-end latency without clock skew.
+- `measurements/latency_measure.py` is the H1 empirical measurement tool. It connects to `GET /api/stream`, reads `bridge_ts` from each SSE event, computes `latency_ms = t_received − bridge_ts`, and after N samples writes full stats to `measurements/latency_results.md`. Run with `python measurements/latency_measure.py --samples 600`. Requires the full bedside stack and an active patient session.
+- `measurements/latency_measure_cloud.py` is the H2 empirical measurement tool. It connects to the Railway cloud SSE stream (`GET /api/patients/:id/stream?token=<jwt>`), reads `ts` from each event, computes `latency_ms = t_received − ts`, and writes full stats to `measurements/latency_results_cloud.md`. Run with `python measurements/latency_measure_cloud.py --patient <uuid> --token <sb-token> --samples 300`. Requires an active patient session and the cloud stack running.
+- H1 latency is **empirically validated**: 600 samples measured 2026-05-30. Min=48.9ms, Mean=619.9ms, P50=583.4ms, P95=1172.5ms, P99=1887.2ms. SLA (P95 < 2000ms) ✅ PASS with 41% margin. Full results in `measurements/latency_results.md`.
+- H2 latency is **empirically validated**: 300 samples measured 2026-05-30. Min=346.7ms, Mean=1040.0ms, P50=986.2ms, P95=1917.7ms. Hybrid bedside is 1.68× lower mean and 1.64× lower P95 than cloud-only path. Full results in `measurements/latency_results_cloud.md`.
+- VS Code `Ctrl+Shift+B` runs the default task **"MediSync: Start All + Measure H1"** — starts InfluxDB, FastAPI, frontend, MQTT bridge in sequence, then launches `measurements/latency_measure.py`. The measurement script waits up to 120 s for the backend, then waits indefinitely for an active patient session before counting samples.
