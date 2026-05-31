@@ -9,5 +9,7 @@ xgboost>=2.0.0
 scikit-learn>=1.4.0
 joblib>=1.3.0
 pandas>=2.0.0
-# Phase 10 — rate limiting
+# Phase 10 — rate limiting (applied to non-device endpoints only)
 slowapi>=0.1.9
+# async HTTP client required by InfluxDBClientAsync
+aiohttp>=3.9.0

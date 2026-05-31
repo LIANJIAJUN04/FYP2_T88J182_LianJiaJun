@@ -5,6 +5,7 @@
 #include "MAX30105.h"
 #include "heartRate.h"
 #include <Adafruit_MLX90614.h>
+#include "soc/rtc_cntl_reg.h"
 #include "config.h"
 
 // ── Sensors ───────────────────────────────────────────────────────────────────
@@ -59,6 +60,10 @@ static void ledSet(bool ok) {
 static void connectWiFi() {
   ledSet(false);
   Serial.printf("[wifi] Connecting to %s", WIFI_SSID);
+
+  WiFi.persistent(false);       // don't write credentials to flash on every connect
+  WiFi.setAutoReconnect(true);  // hardware-level reconnect on brief AP drops
+  WiFi.setSleep(false);         // disable modem sleep — prevents dropped MQTT keepalives
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -120,6 +125,10 @@ static void connectMQTT() {
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 void setup() {
+  // Powerbank supply can sag during WiFi connect burst — disable brownout reset
+  // so the chip survives the voltage dip instead of restarting in a loop.
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   Serial.begin(115200);
   ledInit();
   ledSet(false);  // red on during init

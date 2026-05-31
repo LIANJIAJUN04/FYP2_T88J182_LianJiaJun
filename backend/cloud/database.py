@@ -46,6 +46,7 @@ def _record_to_reading(record) -> dict:
         "confidence": float(v.get("confidence", 0.0)),
         "alert": bool(v.get("alert", False)),
         "ts": record.get_time().isoformat(),
+        "bridge_ts": v.get("bridge_ts"),
     }
 
 

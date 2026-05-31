@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from database import write_reading
-from limiter import limiter
 from ml.predict import run_inference
 from notifications import notify_alert
 from status import get_status
@@ -23,10 +22,10 @@ class ReadingIn(BaseModel):
     bpm: int
     temperature: float
     timestamp: int | None = None
+    bridge_ts: str | None = None
 
 
 @router.post("/api/readings")
-@limiter.limit("5/second")
 async def receive_reading(body: ReadingIn, request: Request):
     secret = request.headers.get("X-Device-Secret", "")
     if secret != _device_secret:
@@ -139,6 +138,7 @@ async def receive_reading(body: ReadingIn, request: Request):
         confidence=confidence,
         alert=alert,
         ts=ts,
+        bridge_ts=body.bridge_ts,
     )
 
     # ── Fire-and-forget notifications for newly opened alerts ─────────────
@@ -162,6 +162,7 @@ async def receive_reading(body: ReadingIn, request: Request):
         "confidence": confidence,
         "alert": alert,
         "ts": ts.isoformat(),
+        "bridge_ts": body.bridge_ts,
     }
 
     return {

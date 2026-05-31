@@ -18,8 +18,8 @@ import sqlite3
 from pathlib import Path
 
 from dotenv import load_dotenv
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client import Point, WritePrecision
+from influxdb_client.client.influxdb_client_async import InfluxDBClientAsync
 
 load_dotenv()
 
@@ -100,14 +100,9 @@ def _payload_to_point(p: dict) -> Point:
     )
     if p.get("spo2") is not None:
         point = point.field("spo2", float(p["spo2"]))
+    if p.get("bridge_ts") is not None:
+        point = point.field("bridge_ts", str(p["bridge_ts"]))
     return point
-
-
-def _write_to_cloud(point: Point) -> None:
-    client = InfluxDBClient(url=_url, token=_token, org=_org)
-    write_api = client.write_api(write_options=SYNCHRONOUS)
-    write_api.write(bucket=_bucket, org=_org, record=point)
-    client.close()
 
 
 # ---------------------------------------------------------------------------
@@ -128,17 +123,24 @@ async def cloud_sync_worker() -> None:
             await sync_queue.put((row_id, payload))
 
     print("[sync] Cloud sync worker started")
-    while True:
-        row_id, payload = await sync_queue.get()
-        point = _payload_to_point(payload)
-        try:
-            await asyncio.to_thread(_write_to_cloud, point)
-            await asyncio.to_thread(_db_delete, row_id)
-            print("[sync] Cloud write ok")
-        except Exception as e:
-            print(f"[sync] Cloud write failed: {e} — retrying in 5s")
-            await sync_queue.put((row_id, payload))
-            await asyncio.sleep(5)
+
+    # InfluxDBClientAsync uses aiohttp — one persistent connection pool,
+    # no thread-pool blocking, no per-write TLS handshake overhead.
+    async with InfluxDBClientAsync(
+        url=_url, token=_token, org=_org, timeout=60_000
+    ) as client:
+        write_api = client.write_api()
+        while True:
+            row_id, payload = await sync_queue.get()
+            point = _payload_to_point(payload)
+            try:
+                await write_api.write(bucket=_bucket, org=_org, record=point)
+                await asyncio.to_thread(_db_delete, row_id)
+                print("[sync] Cloud write ok")
+            except Exception as e:
+                print(f"[sync] Cloud write failed: {e} — retrying in 5s")
+                await sync_queue.put((row_id, payload))
+                await asyncio.sleep(5)
 
 
 def enqueue_reading(
@@ -151,6 +153,7 @@ def enqueue_reading(
     confidence: float,
     alert: bool,
     ts,
+    bridge_ts: str | None = None,
 ) -> None:
     """Persist to SQLite and enqueue for cloud sync."""
     payload = {
@@ -163,6 +166,7 @@ def enqueue_reading(
         "confidence": float(confidence),
         "alert": bool(alert),
         "ts": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+        "bridge_ts": bridge_ts,
     }
     row_id = _db_insert(payload)
     sync_queue.put_nowait((row_id, payload))
