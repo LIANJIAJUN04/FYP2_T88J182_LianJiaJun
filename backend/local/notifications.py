@@ -102,11 +102,13 @@ def _build_messages(
     return telegram_text, email_subject, email_html
 
 
-async def _send_telegram(text: str) -> None:
+async def _send_telegram(text: str) -> float | None:
+    """Send Telegram message. Returns round-trip latency in ms, or None on skip/error."""
     if not _TELEGRAM_BOT_TOKEN or not _TELEGRAM_CHAT_ID:
         logger.debug("[notify] Telegram not configured — skipping")
-        return
+        return None
     url = f"https://api.telegram.org/bot{_TELEGRAM_BOT_TOKEN}/sendMessage"
+    t0 = datetime.now(timezone.utc).timestamp()
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, json={
@@ -114,32 +116,41 @@ async def _send_telegram(text: str) -> None:
                 "text":       text,
                 "parse_mode": "HTML",
             })
+        rtt_ms = (datetime.now(timezone.utc).timestamp() - t0) * 1000
         if resp.status_code == 200:
-            logger.info("[notify] Telegram sent OK")
+            logger.info("[notify] Telegram sent OK — RTT %.0f ms", rtt_ms)
+            return rtt_ms
         else:
             logger.warning("[notify] Telegram API %s: %s", resp.status_code, resp.text[:200])
+            return None
     except Exception as exc:
         logger.warning("[notify] Telegram send failed: %s", exc)
+        return None
 
 
-def _send_email_sync(subject: str, html_body: str) -> None:
+def _send_email_sync(subject: str, html_body: str) -> float | None:
+    """Send email. Returns round-trip latency in ms, or None on skip/error."""
     if not all([_ADMIN_EMAIL, _SMTP_USER, _SMTP_PASSWORD]):
         logger.debug("[notify] Email not configured — skipping")
-        return
+        return None
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = _SMTP_USER
     msg["To"]      = _ADMIN_EMAIL
     msg.attach(MIMEText(html_body, "html", "utf-8"))
+    t0 = datetime.now(timezone.utc).timestamp()
     try:
         with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=15) as server:
             server.ehlo()
             server.starttls()
             server.login(_SMTP_USER, _SMTP_PASSWORD)
             server.sendmail(_SMTP_USER, [_ADMIN_EMAIL], msg.as_string())
-        logger.info("[notify] Email sent to %s", _ADMIN_EMAIL)
+        rtt_ms = (datetime.now(timezone.utc).timestamp() - t0) * 1000
+        logger.info("[notify] Email sent to %s — RTT %.0f ms", _ADMIN_EMAIL, rtt_ms)
+        return rtt_ms
     except Exception as exc:
         logger.warning("[notify] Email send failed: %s", exc)
+        return None
 
 
 async def notify_alert(
@@ -153,12 +164,28 @@ async def notify_alert(
 
     Both channels run concurrently; a failure in one does not block the other.
     Called via asyncio.create_task so it never delays the readings response.
+    Logs precise RTT for each channel to support O1 empirical measurement.
     """
+    t_notify_start = datetime.now(timezone.utc)
+    logger.info(
+        "[notify] notify_alert() started at %s | patient=%s metric=%s value=%s type=%s",
+        t_notify_start.isoformat(), patient_id, metric, value, alert_type,
+    )
+
     telegram_text, email_subject, email_html = _build_messages(
         patient_name, patient_id, metric, value, alert_type
     )
-    await asyncio.gather(
+
+    telegram_rtt, email_rtt = await asyncio.gather(
         _send_telegram(telegram_text),
         asyncio.to_thread(_send_email_sync, email_subject, email_html),
         return_exceptions=True,
+    )
+
+    total_ms = (datetime.now(timezone.utc) - t_notify_start).total_seconds() * 1000
+    logger.info(
+        "[notify] notify_alert() done — total=%.0f ms | telegram_rtt=%s ms | email_rtt=%s ms",
+        total_ms,
+        f"{telegram_rtt:.0f}" if isinstance(telegram_rtt, float) else "skipped/err",
+        f"{email_rtt:.0f}" if isinstance(email_rtt, float) else "skipped/err",
     )

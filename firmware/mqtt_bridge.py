@@ -45,6 +45,7 @@ import json
 import os
 import sys
 import threading
+from datetime import datetime, timezone
 
 import requests
 import paho.mqtt.client as mqtt
@@ -185,6 +186,7 @@ def on_message(client, userdata, msg: mqtt.MQTTMessage) -> None:
         return
 
     if msg.topic == TOPIC_READINGS:
+        payload["bridge_ts"] = datetime.now(timezone.utc).isoformat()
         post_reading(payload)
 
 
