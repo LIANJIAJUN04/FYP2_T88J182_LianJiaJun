@@ -8,7 +8,7 @@ Paste any individual block into [Mermaid Live Editor](https://mermaid.live) to r
 ## 1. System Architecture Diagram
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 graph TD
     subgraph DEVICE["Device Layer"]
         SENSORS["Biometric Sensors"]
@@ -59,7 +59,7 @@ graph TD
 ### 2a. Bedside Processing Pipeline
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "20px"}}}%%
 graph TD
     subgraph FW["Device Firmware"]
         FW1["Sensor Module"]
@@ -113,8 +113,8 @@ graph TD
         FE1["Bedside Dashboard"]
     end
 
-    FW -->|"WiFi MQTT"| TRANSPORT
-    TRANSPORT -->|"HTTP"| LOCAL_BE
+    FW3 -->|"WiFi MQTT"| TR1
+    TR2 -->|"HTTP"| LB9
     LB1 --> ST1
     LB6 --> ST4
     ST1 -->|"Latest Reading"| LB8
@@ -124,7 +124,7 @@ graph TD
 ### 2b. Cloud Monitoring Pipeline
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "20px"}}}%%
 graph TD
     BEDSIDE["Bedside API"]
 
@@ -158,9 +158,10 @@ graph TD
 
     BEDSIDE -->|"Async Upload"| ST2
     BEDSIDE -->|"Sessions + Alerts"| ST3
-    ST2 --> CLOUD_BE
-    ST3 --> CLOUD_BE
-    CLOUD_BE -->|"REST + SSE"| FE2
+    ST2 --> CB1
+    ST3 --> CB1
+    CB2 -->|"REST + SSE"| FE2
+    CB3 -->|"REST + SSE"| FE2
 ```
 
 ---
@@ -168,7 +169,7 @@ graph TD
 ## 3. Use Case Diagram
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 graph LR
 
     NURSE(["Nurse"])
@@ -244,7 +245,7 @@ graph LR
 ### 4a. Session Initialisation
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 sequenceDiagram
     participant DISPLAY as Bedside Display
     participant PROC as Processing Engine
@@ -260,7 +261,7 @@ sequenceDiagram
 ### 4b. Reading Processing Flow
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 sequenceDiagram
     participant DEV as Wearable Device
     participant BROKER as Message Broker
@@ -283,7 +284,7 @@ sequenceDiagram
 ### 4c. Alert Detection
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 sequenceDiagram
     participant PROC as Processing Engine
     participant RECORDS as Patient Records
@@ -298,7 +299,7 @@ sequenceDiagram
 ### 4d. Cloud Sync and Admin Monitoring
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 sequenceDiagram
     participant SYNC as Cloud Sync Queue
     participant CLOUD as Cloud Health Store
@@ -315,7 +316,7 @@ sequenceDiagram
 ### 4e. Device Disconnection
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 sequenceDiagram
     participant DEV as Wearable Device
     participant BROKER as Message Broker
@@ -339,7 +340,7 @@ sequenceDiagram
 ### 5a. Session Initialisation
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "20px"}}}%%
 flowchart TD
     START([Nurse arrives at bedside]) --> NURSE_CHOICE{New or existing patient?}
 
@@ -360,7 +361,7 @@ flowchart TD
 ### 5b. Reading Processing Loop
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "20px"}}}%%
 flowchart TD
     START([New reading received]) --> RULE_STATUS[Evaluate vital status]
     RULE_STATUS --> ML_INFERENCE[Run risk prediction model]
@@ -386,7 +387,7 @@ flowchart TD
 ### 5c. Session Termination
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "20px"}}}%%
 flowchart TD
     START([Session active]) --> TERM{Termination event?}
 
@@ -414,7 +415,7 @@ flowchart TD
 ### 6a. Core Entities and Data Model
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 classDiagram
     direction TB
 
@@ -502,7 +503,7 @@ classDiagram
 ### 6b. Backend Service Infrastructure
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 classDiagram
     direction TB
 
@@ -545,7 +546,7 @@ classDiagram
 ## 7. Component Diagram
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 graph TD
     WEARABLE["Wearable Device"]
     NURSE["Nurse Browser"]
@@ -594,7 +595,7 @@ graph TD
 ## 8. Data Flow Diagram (DFD)
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 graph TD
     DEVICE_EXT(["Wearable Device"])
     NURSE_EXT(["Nurse"])
@@ -644,7 +645,7 @@ graph TD
 ## 9. Entity-Relationship (ER) Diagram
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 erDiagram
     PATIENTS {
         uuid id PK
@@ -706,7 +707,7 @@ erDiagram
 ### 10a. Request Validation & Vital Processing
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "20px"}}}%%
 flowchart TD
     START(["Reading request received"]) --> AUTH{Device authorised?}
     AUTH -->|No| R403["Reject — 403"]
@@ -747,7 +748,7 @@ flowchart TD
 ### 10b. Alert Handling & Storage
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "20px"}}}%%
 flowchart TD
     START(["Vital processing complete"]) --> ALERT_GATE{Alert condition detected?}
 
@@ -769,7 +770,7 @@ flowchart TD
 ## 11. Network Diagram
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 graph TD
     WEARABLE["Wearable Device"]
     NURSE["Nurse Browser"]
@@ -813,7 +814,7 @@ graph TD
 ## 12. ML Model Architecture Diagram
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 flowchart TD
     INPUT["Raw Vital Signs: Heart Rate, SpO2, Temperature"]
 
@@ -842,7 +843,7 @@ flowchart TD
 ## 13. Deployment Diagram
 
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {"theme": "dark", "themeVariables": {"fontSize": "16px"}}}%%
 graph TD
     WEARABLE["Wearable Device"]
     NURSE["Nurse Browser"]
