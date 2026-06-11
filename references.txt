@@ -1,0 +1,465 @@
+================================================================================
+REAL-TIME HEALTH MONITORING VIA WEARABLE IOT WITH CLOUD ANALYTICS
+FYP REFERENCE LIST — 50 PEER-REVIEWED ARTICLES (2021–2026)
+Author: LIAN JIA JUN | Multimedia University | Supervisor: Dr. Subarmaniam Kannan
+================================================================================
+
+NOTE: All DOIs have been verified through web searches and/or WebFetch during
+research. Papers marked (*VERIFY AUTHORS*) had DOI confirmed but author lists
+could not be fully extracted due to publisher access restrictions — confirm the
+exact author names on the publisher page before final submission.
+
+================================================================================
+DOMAIN 1 — Local Wireless Mesh vs. Cellular Telemetry in Hospital Wards
+(WiFi 802.11 stability, LAN MQTT brokers, fixed-node bedside deployment
+vs. cellular ambulatory systems for indoor clinical environments)
+================================================================================
+
+[1]  Y.-C. Tsao, F.-J. Cheng, Y.-H. Li, and L.-D. Liao, "An IoT-Based Smart
+     System with an MQTT Broker for Individual Patient Vital Sign Monitoring in
+     Potential Emergency or Prehospital Applications," Emergency Medicine
+     International, vol. 2022, Art. ID 7245650, Jan. 2022.
+     DOI: 10.1155/2022/7245650
+     Link: https://doi.org/10.1155/2022/7245650
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC8817861/
+
+[2]  H. H. Alshammari, "The internet of things healthcare monitoring system
+     based on MQTT protocol," Alexandria Engineering Journal, vol. 69,
+     pp. 275–287, Feb. 2023.
+     DOI: 10.1016/j.aej.2023.01.065
+     Link: https://doi.org/10.1016/j.aej.2023.01.065
+     ResearchGate: https://researchgate.net/publication/369697890
+
+[3]  F. Palmese, A. E. C. Redondi, and M. Cesana, "Adaptive Quality of Service
+     Control for MQTT-SN," Sensors, vol. 22, no. 22, Art. 8852, Nov. 2022.
+     DOI: 10.3390/s22228852
+     Link: https://doi.org/10.3390/s22228852
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC9693221/
+
+[4]  A. Ahila, F. Dahan, R. Alroobaea, W. Y. Alghamdi, M. K. Mohammed,
+     F. Hajjej, D. M. Alsekait, and K. Raahemifar, "A smart IoMT based
+     architecture for E-healthcare patient monitoring system using artificial
+     intelligence algorithms," Frontiers in Physiology, vol. 14, Art. 1125952,
+     Jan. 2023.
+     DOI: 10.3389/fphys.2023.1125952
+     Link: https://doi.org/10.3389/fphys.2023.1125952
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC9923105/
+
+[5]  T. Nunes, L. Gaspar, J. N. Faria, D. Portugal, T. Lopes, P. Fernandes,
+     and M. Tavakoli, "Deployment and validation of a smart bed architecture for
+     untethered patients with wireless biomonitoring stickers," Medical &
+     Biological Engineering & Computing, vol. 62, no. 12, pp. 3815–3840,
+     Jul. 2024.
+     DOI: 10.1007/s11517-024-03155-3
+     Link: https://doi.org/10.1007/s11517-024-03155-3
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC11639216/
+
+[6]  A. Iqbal, T. Khurshaid, A. Nauman, and S.-B. Rhee, "Energy-Aware
+     Ultra-Reliable Low-Latency Communication for Healthcare IoT in Beyond 5G
+     and 6G Networks," Sensors, vol. 25, no. 11, Art. 3474, May 2025.
+     DOI: 10.3390/s25113474
+     Link: https://doi.org/10.3390/s25113474
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC12158281/
+
+[7]  Y.-H. Tseng, C. Wang, Y.-T. Wei, and Y.-T. Chiang, "Cloud-edge MQTT
+     messaging for latency mitigation and broker memory footprint reduction,"
+     PeerJ Computer Science, vol. 11, e2741, Mar. 2025.
+     DOI: 10.7717/peerj-cs.2741
+     Link: https://doi.org/10.7717/peerj-cs.2741
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC11935751/
+
+[8]  Y.-A. Daraghmi, E. Y. Daraghmi, R. Daraghma, H. Fouchal, and M. Ayaida,
+     "Edge–Fog–Cloud Computing Hierarchy for Improving Performance and Security
+     of NB-IoT-Based Health Monitoring Systems," Sensors, vol. 22, no. 22,
+     Art. 8646, Nov. 2022.
+     DOI: 10.3390/s22228646
+     Link: https://doi.org/10.3390/s22228646
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC9693494/
+
+[9]  I. Shafi, S. Din, S. Farooq, I. de la Torre Díez, J. Breñosa,
+     J. C. M. Espinosa, and I. Ashraf, "Design and development of patient health
+     tracking, monitoring and big data storage using Internet of Things and real
+     time cloud computing," PLOS ONE, vol. 19, no. 3, Art. e0298582, Mar. 2024.
+     DOI: 10.1371/journal.pone.0298582
+     Link: https://doi.org/10.1371/journal.pone.0298582
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC10927143/
+
+[10] A. Elhadad, F. Alanazi, A. I. Taloba, and A. Abozeid, "Fog Computing
+     Service in the Healthcare Monitoring System for Managing the Real-Time
+     Notification," Journal of Healthcare Engineering, vol. 2022, Art. ID
+     5337733, Mar. 2022.
+     DOI: 10.1155/2022/5337733
+     Link: https://doi.org/10.1155/2022/5337733
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC8941505/
+
+
+================================================================================
+DOMAIN 2 — Multi-Model Architectures & Gateway-Class Machine Learning
+(Why XGBoost/tree-based inference is shifted to the bedside gateway server
+rather than the ESP32 microcontroller; clinical tabular data ML performance)
+================================================================================
+
+[11] C. V. F. Pereira, E. M. de Oliveira, and A. D. de Souza, "Machine Learning
+     Applied to Edge Computing and Wearable Devices for Healthcare: Systematic
+     Mapping of the Literature," Sensors, vol. 24, no. 19, Art. 6322, Sep. 2024.
+     DOI: 10.3390/s24196322
+     Link: https://doi.org/10.3390/s24196322
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC11478846/
+
+[12] H. Yun, J. Choi, and J. H. Park, "Prediction of Critical Care Outcome for
+     Adult Patients Presenting to Emergency Department Using Initial Triage
+     Information: An XGBoost Algorithm Analysis," JMIR Medical Informatics,
+     vol. 9, no. 9, e30770, Sep. 2021.
+     DOI: 10.2196/30770
+     Link: https://doi.org/10.2196/30770
+     Open access: https://medinform.jmir.org/2021/9/e30770
+
+[13] X. Wang, T. Zhu, M. Xia, Y. Liu, Y. Wang, X. Wang, L. Zhuang, D. Zhong,
+     J. Zhu, H. He, S. Weng, J. Zhu, and D. Lai, "Predicting the Prognosis of
+     Patients in the Coronary Care Unit: A Novel Multi-Category Machine Learning
+     Model Using XGBoost," Frontiers in Cardiovascular Medicine, vol. 9,
+     Art. 764629, Feb. 2022.
+     DOI: 10.3389/fcvm.2022.764629
+     Link: https://doi.org/10.3389/fcvm.2022.764629
+     Open access: https://frontiersin.org/articles/10.3389/fcvm.2022.764629/full
+
+[14] G. Lyu and M. Nakayama, "Prediction of respiratory failure risk in patients
+     with pneumonia in the ICU using ensemble learning models," PLOS ONE,
+     vol. 18, no. 9, Art. e0291711, Sep. 2023.
+     DOI: 10.1371/journal.pone.0291711
+     Link: https://doi.org/10.1371/journal.pone.0291711
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC10513189/
+
+[15] L. Grinsztajn, E. Oyallon, and G. Varoquaux, "Why do tree-based models
+     still outperform deep learning on tabular data?" Advances in Neural
+     Information Processing Systems (NeurIPS), vol. 35, pp. 507–520, 2022.
+     arXiv: 2207.08815
+     DOI: 10.48550/arXiv.2207.08815
+     Link: https://doi.org/10.48550/arXiv.2207.08815
+     arXiv full text: https://arxiv.org/abs/2207.08815
+
+[16] Y. Zhu, J. Zhang, G. Wang, R. Yao, C. Ren, G. Chen, X. Jin, J. Guo,
+     S. Liu, H. Zheng, Y. Chen, Q. Guo, L. Li, B. Du, X. Xi, W. Li, H. Huang,
+     Y. Li, and Q. Yu, "Machine Learning Prediction Models for Mechanically
+     Ventilated Patients: Analyses of the MIMIC-III Database," Frontiers in
+     Medicine, vol. 8, Art. 662340, Jul. 2021.
+     DOI: 10.3389/fmed.2021.662340
+     Link: https://doi.org/10.3389/fmed.2021.662340
+
+[17] C.-Y. Cheng, C.-T. Kung, F.-C. Chen, I.-M. Chiu, C. H. R. Lin, C.-C. Chu,
+     C. F. Kung, and C.-M. Su, "Machine learning models for predicting
+     in-hospital mortality in patient with sepsis: Analysis of vital sign
+     dynamics," Frontiers in Medicine, vol. 9, Art. 964667, Oct. 2022.
+     DOI: 10.3389/fmed.2022.964667
+     Link: https://doi.org/10.3389/fmed.2022.964667
+
+[18] K. Alghatani, N. Ammar, A. Rezgui, and A. Shaban-Nejad, "Predicting
+     Intensive Care Unit Length of Stay and Mortality Using Patient Vital Signs:
+     Machine Learning Model Development and Validation," JMIR Medical
+     Informatics, vol. 9, no. 5, e21347, May 2021.
+     DOI: 10.2196/21347
+     Link: https://doi.org/10.2196/21347
+
+[19] M. J. Raihan, M. A.-M. Khan, S.-H. Kee, and A.-A. Nahid, "Detection of
+     the chronic kidney disease using XGBoost classifier and explaining the
+     influence of the attributes on the model using SHAP," Scientific Reports,
+     vol. 13, Art. 6263, Apr. 2023.
+     DOI: 10.1038/s41598-023-33525-0
+     Link: https://doi.org/10.1038/s41598-023-33525-0
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC10110580/
+
+[20] H. Sun, K. Depraetere, L. Meesseman, P. C. Silva, R. Szymanowsky,
+     J. Fliegenschmidt, N. Hulde, V. von Dossow, M. Vanbiervliet,
+     J. De Baerdemaeker, D. M. Roccaro-Waldmeyer, J. Stieg, M. D. Hidalgo,
+     and F.-M. Dahlweid, "Machine Learning–Based Prediction Models for
+     Different Clinical Risks in Different Hospitals: Evaluation of Live
+     Performance," Journal of Medical Internet Research, vol. 24, no. 6,
+     e34295, Jun. 2022.
+     DOI: 10.2196/34295
+     Link: https://doi.org/10.2196/34295
+     Open access: https://www.jmir.org/2022/6/e34295
+
+
+================================================================================
+DOMAIN 3 — Machine Learning Calibration & Overfitting in Biomedical Time-Series
+(Probability calibration, Youden's J threshold tuning, isotonic regression,
+static XGBoost vs. sequential DL for constrained clinical gateway inference)
+================================================================================
+
+[21] S. Mehrdad, F. E. Shamout, Y. Wang, and S. F. Atashzar, "Deep learning
+     for deterioration prediction of COVID-19 patients based on time-series of
+     three vital signs," Scientific Reports, vol. 13, Art. 9968, Jun. 2023.
+     DOI: 10.1038/s41598-023-37013-3
+     Link: https://doi.org/10.1038/s41598-023-37013-3
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC10282033/
+
+[22] S. Rajaraman, P. Ganesan, and S. Antani, "Deep learning model calibration
+     for improving performance in class-imbalanced medical image classification
+     tasks," PLOS ONE, vol. 17, no. 1, Art. e0262838, Jan. 2022.
+     DOI: 10.1371/journal.pone.0262838
+     Link: https://doi.org/10.1371/journal.pone.0262838
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC8794113/
+
+[23] T. Roland, C. Böck, T. Tschoellitsch, A. Maletzky, S. Hochreiter,
+     J. Meier, and G. Klambauer, "Domain Shifts in Machine Learning Based
+     Covid-19 Diagnosis From Blood Tests," Journal of Medical Systems, vol. 46,
+     no. 5, Art. 23, Mar. 2022.
+     DOI: 10.1007/s10916-022-01807-1
+     Link: https://doi.org/10.1007/s10916-022-01807-1
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC8960704/
+
+[24] J. Luu, E. Borisenko, V. Przekop, A. Patil, J. D. Forrester, and J. Choi,
+     "Practical guide to building machine learning-based clinical prediction
+     models using imbalanced datasets," Trauma Surgery & Acute Care Open,
+     vol. 9, Art. e001222, Jun. 2024.
+     DOI: 10.1136/tsaco-2023-001222
+     Link: https://doi.org/10.1136/tsaco-2023-001222
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC11177772/
+
+[25] G. S. Collins, K. G. M. Moons, P. Dhiman, R. D. Riley, A. L. Beam,
+     B. Van Calster, M. Ghassemi, X. Liu, J. B. Reitsma, M. van Smeden,
+     A.-L. Boulesteix, J. C. Camaradou, L. A. Celi, S. Denaxas, A. K. Denniston,
+     B. Glocker, R. M. Golub, H. Harvey, G. Heinze, M. M. Hoffman, A. P. Kengne,
+     E. Lam, N. Lee, E. W. Loder, L. Maier-Hein, B. A. Mateen, M. D. McCradden,
+     L. Oakden-Rayner, J. Ordish, R. Parnell, S. Rose, K. Singh, L. Wynants,
+     and P. Logullo, "TRIPOD+AI statement: updated guidance for reporting
+     clinical prediction models that use regression or machine learning methods,"
+     BMJ, vol. 385, Art. e078378, Apr. 2024.
+     DOI: 10.1136/bmj-2023-078378
+     Link: https://doi.org/10.1136/bmj-2023-078378
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC11025451/
+
+[26] V. Palanisamy, A. Padmanabhan, A. Ramasamy, and S. Subramaniam, "Remote
+     Patient Activity Monitoring System by Integrating IoT Sensors and
+     Artificial Intelligence Techniques," Sensors, vol. 23, no. 13, Art. 5869,
+     Jun. 2023.
+     DOI: 10.3390/s23135869
+     Link: https://doi.org/10.3390/s23135869
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC10346748/
+
+[27] (*VERIFY AUTHORS*) "Longitudinal Model Shifts of Machine Learning–Based
+     Clinical Risk Prediction Models: Evaluation Study of Multiple Use Cases
+     Across Different Hospitals," Journal of Medical Internet Research, vol. 26,
+     e51409, Feb. 2024.
+     DOI: 10.2196/51409
+     Link: https://doi.org/10.2196/51409
+     Publisher page: https://www.jmir.org/2024/1/e51409
+
+[28] O. Khattach, O. Moussaoui, and M. Hassine, "End-to-End Architecture for
+     Real-Time IoT Analytics and Predictive Maintenance Using Stream Processing
+     and ML Pipelines," Sensors, vol. 25, no. 9, Art. 2945, May 2025.
+     DOI: 10.3390/s25092945
+     Link: https://doi.org/10.3390/s25092945
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC12074242/
+
+[29] (*VERIFY AUTHORS*) "Machine Learning for Assessing Vital Signs in Humans
+     in Smart Cities Based on a Multi-Agent System," Future Internet, vol. 18,
+     no. 1, Art. 27, Jan. 2025.
+     DOI: 10.3390/fi18010027
+     Link: https://doi.org/10.3390/fi18010027
+     Publisher page: https://www.mdpi.com/1999-5903/18/1/27
+
+[30] (*VERIFY AUTHORS*) "Machine Learning–Based Early Warning Systems for
+     Clinical Deterioration: Systematic Scoping Review," JMIR Medical
+     Informatics, vol. 9, no. 3, e25187, Mar. 2021.
+     DOI: 10.2196/25187
+     Link: https://doi.org/10.2196/25187
+     PMC open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC7892287/
+
+
+================================================================================
+DOMAIN 4 — High-Concurrency Data Ingestion & Server-Sent Events (SSE)
+(InfluxDB time-series, async SQLite queues, SSE push protocols,
+edge-cloud sync pipelines for live clinical dashboards)
+================================================================================
+
+[31] H. Alasmary, "ScalableDigitalHealth (SDH): An IoT-Based Scalable Framework
+     for Remote Patient Monitoring," Sensors, vol. 24, no. 4, Art. 1346,
+     Feb. 2024.
+     DOI: 10.3390/s24041346
+     Link: https://doi.org/10.3390/s24041346
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC10893503/
+
+[32] C. Wang, J. Qiao, X. Huang, S. Song, H. Hou, T. Jiang, L. Rui, J. Wang,
+     and J. Sun, "Apache IoTDB: A Time Series Database for IoT Applications,"
+     Proceedings of the ACM on Management of Data (SIGMOD), vol. 1, no. 2,
+     Art. 127, Jun. 2023.
+     DOI: 10.1145/3589775
+     Link: https://doi.org/10.1145/3589775
+     ACM DL: https://dl.acm.org/doi/10.1145/3589775
+
+[33] (*VERIFY AUTHORS*) "Real-Time Remote Patient Monitoring: A Review of
+     Biosensors Integrated with Multi-Hop IoT Systems via Cloud Connectivity,"
+     Applied Sciences, vol. 14, no. 5, Art. 1876, Feb. 2024.
+     DOI: 10.3390/app14051876
+     Link: https://doi.org/10.3390/app14051876
+     Publisher page: https://www.mdpi.com/2076-3417/14/5/1876
+
+[34] (*VERIFY AUTHORS*) "Adaptive fault tolerance mechanisms for ensuring high
+     availability of digital twins in distributed edge computing systems,"
+     Scientific Reports, vol. 15, 2025.
+     DOI: 10.1038/s41598-025-25590-4
+     Link: https://doi.org/10.1038/s41598-025-25590-4
+     Publisher page: https://www.nature.com/articles/s41598-025-25590-4
+
+[35] R. Maskeliūnas, R. Damaševičius, and S. Segal, "A Review of Internet of
+     Medical Things (IoMT)-Based Remote Health Monitoring Systems: Data
+     Security, Privacy, and Scalability Issues," Electronics, vol. 11, no. 13,
+     Art. 2024, Jun. 2022.
+     DOI: 10.3390/electronics11132024
+     Link: https://doi.org/10.3390/electronics11132024
+     Publisher page: https://www.mdpi.com/2079-9292/11/13/2024
+
+[36] H. Maneshti, M. Dadashi, and K. Rostami, "IoT-Enabled Low-Cost Fog
+     Computing System with Online Machine Learning for Accurate and Low-Latency
+     Heart Monitoring in Rural Healthcare Settings," arXiv preprint
+     arXiv:2302.14131, Feb. 2023.
+     DOI: 10.48550/arXiv.2302.14131
+     Link: https://doi.org/10.48550/arXiv.2302.14131
+     arXiv full text: https://arxiv.org/abs/2302.14131
+
+[37] M. Pasha and S. W. Shah, "Framework for E-Health Systems in IoT-Based
+     Environments," Wireless Communications and Mobile Computing, vol. 2021,
+     Art. ID 8839529, May 2021.
+     DOI: 10.1155/2021/8839529
+     Link: https://doi.org/10.1155/2021/8839529
+
+[38] (*VERIFY AUTHORS*) "An Effective Data Science Technique for IoT-Assisted
+     Healthcare Monitoring System with a Rapid Adoption of Cloud Computing,"
+     Journal of Healthcare Engineering, vol. 2022, Art. ID 7425846, Jan. 2022.
+     DOI: 10.1155/2022/7425846
+     Link: https://doi.org/10.1155/2022/7425846
+     PMC open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC8789444/
+
+[39] D. Diki, D. Trihinas, and G. Pallis, "Adaptive Stream Processing on Edge
+     Devices Through Active Inference," Evolving Systems, 2025.
+     DOI: 10.1007/s12530-025-09753-2
+     Link: https://doi.org/10.1007/s12530-025-09753-2
+     Publisher page: https://link.springer.com/article/10.1007/s12530-025-09753-2
+
+[40] (*VERIFY AUTHORS*) "A secured remote patient monitoring framework for IoMT
+     ecosystems," Scientific Reports, vol. 15, 2025.
+     DOI: 10.1038/s41598-025-04774-y
+     Link: https://doi.org/10.1038/s41598-025-04774-y
+     Publisher page: https://www.nature.com/articles/s41598-025-04774-y
+
+
+================================================================================
+DOMAIN 5 — Generative AI & LLMs for Clinical Decision Support (CDSS)
+(LLM deployment, prompt caching, TTFB latency optimisation, streaming
+inference, and clinical narrative synthesis for physician assistance)
+================================================================================
+
+[41] K. Singhal, S. Azizi, T. Tu, S. S. Mahdavi, J. Wei, H. W. Chung,
+     N. Scales, A. Tanwani, H. Cole-Lewis, S. Pfohl, P. Payne,
+     M. Seneviratne, P. Gamble, C. Kelly, N. Scharli, A. Chowdhery,
+     P. Mansfield, B. Dominguez, S. Manyika, B. Packer, J. Dean, A. Fiedel,
+     R. Rajkomar, D. Flores, G. Corrado, M. Matias, and
+     A. Karthikesalingam, "Large language models encode clinical knowledge,"
+     Nature, vol. 620, no. 7972, pp. 172–180, Aug. 2023.
+     DOI: 10.1038/s41586-023-06291-2
+     Link: https://doi.org/10.1038/s41586-023-06291-2
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC10396962/
+
+[42] A. J. Thirunavukarasu, D. S. J. Ting, K. Elangovan, L. Gutierrez,
+     T. F. Tan, and D. S. W. Ting, "Large language models in medicine,"
+     Nature Medicine, vol. 29, no. 8, pp. 1930–1940, Aug. 2023.
+     DOI: 10.1038/s41591-023-02448-8
+     Link: https://doi.org/10.1038/s41591-023-02448-8
+     Publisher page: https://www.nature.com/articles/s41591-023-02448-8
+
+[43] D. Van Veen, C. Van Uden, L. Blankemeier, J.-B. Delbrouck, A. Aali,
+     C. Bluethgen, A. Pareek, M. Polacin, E. P. Reis, A. Seehofnerová,
+     N. Rohatgi, P. Hosamani, W. Collins, N. Ahuja, C. P. Langlotz, J. Hom,
+     S. Gatidis, J. Pauly, and A. S. Chaudhari, "Adapted large language models
+     can outperform medical experts in clinical text summarization," Nature
+     Medicine, vol. 30, no. 4, pp. 1134–1142, Apr. 2024.
+     DOI: 10.1038/s41591-024-02855-5
+     Link: https://doi.org/10.1038/s41591-024-02855-5
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC11479659/
+     arXiv preprint: https://arxiv.org/abs/2309.07430
+
+[44] J. Zaghir, M. Naguib, M. Bjelogrlic, A. Névéol, X. Tannier, and C. Lovis,
+     "Prompt Engineering Paradigms for Medical Applications: Scoping Review,"
+     Journal of Medical Internet Research, vol. 26, e60501, Sep. 2024.
+     DOI: 10.2196/60501
+     Link: https://doi.org/10.2196/60501
+     Open access: https://www.jmir.org/2024/1/e60501
+
+[45] H. Nori, N. King, S. M. McKinney, D. Carignan, and E. Horvitz,
+     "Capabilities of GPT-4 on Medical Challenge Problems," arXiv preprint
+     arXiv:2303.13375, Mar. 2023.
+     DOI: 10.48550/arXiv.2303.13375
+     Link: https://doi.org/10.48550/arXiv.2303.13375
+     arXiv full text: https://arxiv.org/abs/2303.13375
+     Microsoft Research: https://www.microsoft.com/en-us/research/publication/capabilities-of-gpt-4-on-medical-challenge-problems/
+
+[46] J. Liu, C. Wang, and S. Liu, "Utility of ChatGPT in Clinical Practice,"
+     Journal of Medical Internet Research, vol. 25, no. 1, e48568, Jun. 2023.
+     DOI: 10.2196/48568
+     Link: https://doi.org/10.2196/48568
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC10365580/
+
+[47] K.-H. Jung, "Large Language Models in Medicine: Clinical Applications,
+     Technical Challenges, and Ethical Considerations," Healthcare Informatics
+     Research, vol. 31, no. 2, pp. 114–124, Apr. 2025.
+     DOI: 10.4258/hir.2025.31.2.114
+     Link: https://doi.org/10.4258/hir.2025.31.2.114
+     Open access: https://pmc.ncbi.nlm.nih.gov/articles/PMC12086438/
+
+[48] (*VERIFY AUTHORS*) "A systematic review of large language model (LLM)
+     evaluations in clinical medicine," BMC Medical Informatics and Decision
+     Making, vol. 25, Art. 153, Mar. 2025.
+     DOI: 10.1186/s12911-025-02954-4
+     Link: https://doi.org/10.1186/s12911-025-02954-4
+     Publisher page: https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-025-02954-4
+
+[49] (*VERIFY AUTHORS*) "Leveraging ChatGPT and explainable AI for enhancing
+     clinical decision support," Scientific Reports, vol. 15, 2025.
+     DOI: 10.1038/s41598-025-22784-8
+     Link: https://doi.org/10.1038/s41598-025-22784-8
+     Publisher page: https://www.nature.com/articles/s41598-025-22784-8
+
+[50] (*VERIFY AUTHORS*) "Evaluation and mitigation of the limitations of large
+     language models in clinical decision-making," Nature Medicine, vol. 30,
+     no. 9, pp. 2445–2456, Sep. 2024.
+     DOI: 10.1038/s41591-024-03097-1
+     Link: https://doi.org/10.1038/s41591-024-03097-1
+     Publisher page: https://www.nature.com/articles/s41591-024-03097-1
+
+
+================================================================================
+VERIFICATION CHECKLIST — Papers Flagged (*VERIFY AUTHORS*)
+================================================================================
+
+Before final submission, open the publisher page for each flagged paper and
+confirm the exact author list. All DOIs below are confirmed from web searches.
+
+  [27]  https://www.jmir.org/2024/1/e51409
+  [29]  https://www.mdpi.com/1999-5903/18/1/27
+  [30]  https://pmc.ncbi.nlm.nih.gov/articles/PMC7892287/
+  [33]  https://www.mdpi.com/2076-3417/14/5/1876
+  [34]  https://www.nature.com/articles/s41598-025-25590-4
+  [38]  https://pmc.ncbi.nlm.nih.gov/articles/PMC8789444/
+  [40]  https://www.nature.com/articles/s41598-025-04774-y
+  [48]  https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-025-02954-4
+  [49]  https://www.nature.com/articles/s41598-025-22784-8
+  [50]  https://www.nature.com/articles/s41591-024-03097-1
+
+
+================================================================================
+DOMAIN COVERAGE SUMMARY
+================================================================================
+
+  Domain 1  —  Papers [1]–[10]   (WiFi/MQTT/LAN hospital telemetry)
+  Domain 2  —  Papers [11]–[20]  (XGBoost & gateway-class ML)
+  Domain 3  —  Papers [21]–[30]  (calibration, overfitting, Youden's J)
+  Domain 4  —  Papers [31]–[40]  (time-series, SSE, async pipelines)
+  Domain 5  —  Papers [41]–[50]  (LLM / generative AI for CDSS)
+
+  Total: 50 papers | Publication years: 2021–2025 (within 2021–2026 window)
+  All DOIs resolvable at https://doi.org/<DOI>
+
+================================================================================
+END OF REFERENCE LIST
+================================================================================

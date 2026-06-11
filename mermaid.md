@@ -56,8 +56,10 @@ graph TD
 
 ## 2. Block Diagram
 
+### 2a. Bedside Processing Pipeline
+
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
 graph TD
     subgraph FW["Device Firmware"]
         FW1["Sensor Module"]
@@ -80,16 +82,17 @@ graph TD
     end
 
     subgraph LOCAL_BE["Bedside API"]
+        LB10["Heartbeat Monitor"]
         LB9["Session Manager"]
         LB1["Reading Processor"]
-        LB2["Status Evaluation Engine"]
+        LB2["Status Engine"]
         LB3["Risk Prediction Model"]
         LB4["Safety Override Gate"]
         LB5["Alert Detector"]
         LB6["Cloud Sync Engine"]
         LB7["Notification Service"]
         LB8["Live Data Streamer"]
-        LB10["Heartbeat Monitor"]
+        LB10 --> LB9
         LB9 --> LB1
         LB1 --> LB2
         LB1 --> LB3
@@ -99,7 +102,35 @@ graph TD
         LB5 --> LB6
         LB5 --> LB7
         LB1 --> LB8
-        LB10 --> LB9
+    end
+
+    subgraph STORAGE["Local Storage"]
+        ST1[("Time-Series Store")]
+        ST4[("Sync Buffer")]
+    end
+
+    subgraph FE["Bedside Frontend"]
+        FE1["Bedside Dashboard"]
+    end
+
+    FW -->|"WiFi MQTT"| TRANSPORT
+    TRANSPORT -->|"HTTP"| LOCAL_BE
+    LB1 --> ST1
+    LB6 --> ST4
+    ST1 -->|"Latest Reading"| LB8
+    LB8 -->|"Live Stream"| FE1
+```
+
+### 2b. Cloud Monitoring Pipeline
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+graph TD
+    BEDSIDE["Bedside API"]
+
+    subgraph STORAGE["Cloud Storage"]
+        ST2[("Cloud Time-Series Store")]
+        ST3[("Patient Database")]
     end
 
     subgraph CLOUD_BE["Cloud API"]
@@ -113,31 +144,23 @@ graph TD
         CB8["AI Analysis Module"]
         CB1 --> CB2
         CB1 --> CB3
+        CB1 --> CB4
+        CB1 --> CB5
         CB1 --> CB6
         CB1 --> CB7
         CB6 --> CB8
         CB7 --> CB8
     end
 
-    subgraph STORAGE["Storage Layer"]
-        ST1["Local Time-Series Store"]
-        ST2["Cloud Time-Series Store"]
-        ST3["Central Patient Database"]
-        ST4["Sync Buffer"]
-    end
-
-    subgraph FE["Frontend Layer"]
-        FE1["Bedside Dashboard"]
+    subgraph FE["Admin Frontend"]
         FE2["Admin Dashboard"]
     end
 
-    FW -->|"Wireless MQTT"| TRANSPORT
-    TRANSPORT -->|"HTTP"| LOCAL_BE
-    LOCAL_BE --> STORAGE
-    CLOUD_BE --> STORAGE
-    STORAGE --> CLOUD_BE
-    LOCAL_BE -->|"Live Stream"| FE1
-    CLOUD_BE -->|"REST + Stream"| FE2
+    BEDSIDE -->|"Async Upload"| ST2
+    BEDSIDE -->|"Sessions + Alerts"| ST3
+    ST2 --> CLOUD_BE
+    ST3 --> CLOUD_BE
+    CLOUD_BE -->|"REST + SSE"| FE2
 ```
 
 ---
@@ -313,8 +336,10 @@ sequenceDiagram
 
 ## 5. Activity Diagram
 
+### 5a. Session Initialisation
+
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
 flowchart TD
     START([Nurse arrives at bedside]) --> NURSE_CHOICE{New or existing patient?}
 
@@ -329,15 +354,15 @@ flowchart TD
     CREATE_PATIENT --> OPEN_SESSION
     LOOKUP_PATIENT --> OPEN_SESSION[Open monitoring session]
 
-    OPEN_SESSION --> DASHBOARD[Display bedside monitoring dashboard]
+    OPEN_SESSION --> END([Dashboard active — begin monitoring])
+```
 
-    DASHBOARD --> READING_RECEIVED{New reading received?}
-    READING_RECEIVED -->|No| WATCHDOG_CHECK{Session idle beyond threshold?}
-    WATCHDOG_CHECK -->|No| READING_RECEIVED
-    WATCHDOG_CHECK -->|Yes| AUTO_TIMEOUT[Auto-close session]
-    AUTO_TIMEOUT --> SESSION_CLOSED
+### 5b. Reading Processing Loop
 
-    READING_RECEIVED -->|Yes| RULE_STATUS[Evaluate vital status]
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+flowchart TD
+    START([New reading received]) --> RULE_STATUS[Evaluate vital status]
     RULE_STATUS --> ML_INFERENCE[Run risk prediction model]
     ML_INFERENCE --> OOD_CHECK{Safety override required?}
     OOD_CHECK -->|Yes| FORCE_ANOMALY[Override prediction to Anomaly]
@@ -354,20 +379,28 @@ flowchart TD
 
     WRITE_LOCAL[Write reading to local time-series store]
     WRITE_LOCAL --> ENQUEUE[Enqueue reading for cloud sync]
-    ENQUEUE --> UPDATE_STATE[Update live session state]
-    UPDATE_STATE --> CLOUD_SYNC_BG[Async cloud sync]
-    CLOUD_SYNC_BG --> SSE_UPDATE[Broadcast live update to bedside display]
-    SSE_UPDATE --> DISCONNECT_CHECK{Disconnect event?}
-    DISCONNECT_CHECK -->|No| READING_RECEIVED
+    ENQUEUE --> SSE_UPDATE[Broadcast live update to bedside display]
+    SSE_UPDATE --> END([Await next reading])
+```
 
-    DISCONNECT_CHECK -->|Device offline signal| LWT_GRACE[Start disconnect grace period]
+### 5c. Session Termination
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+flowchart TD
+    START([Session active]) --> TERM{Termination event?}
+
+    TERM -->|Device offline signal| LWT_GRACE[Start disconnect grace period]
     LWT_GRACE --> GRACE_SURVIVED{New reading within grace period?}
-    GRACE_SURVIVED -->|Yes| READING_RECEIVED
+    GRACE_SURVIVED -->|Yes| START
     GRACE_SURVIVED -->|No| DEVICE_DISCONNECT[Signal device disconnect]
     DEVICE_DISCONNECT --> SESSION_CLOSED
 
-    DISCONNECT_CHECK -->|Nurse clicks logout| MANUAL_LOGOUT[Manual session logout]
+    TERM -->|Nurse clicks logout| MANUAL_LOGOUT[Manual session logout]
     MANUAL_LOGOUT --> SESSION_CLOSED
+
+    TERM -->|No reading for 5 minutes| AUTO_TIMEOUT[Heartbeat watchdog timeout]
+    AUTO_TIMEOUT --> SESSION_CLOSED
 
     SESSION_CLOSED[Close monitoring session]
     SESSION_CLOSED --> CLEAR_STATE[Clear active session state]
@@ -670,13 +703,15 @@ erDiagram
 
 ## 10. Flowchart
 
+### 10a. Request Validation & Vital Processing
+
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '16px'}}}%%
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
 flowchart TD
     START(["Reading request received"]) --> AUTH{Device authorised?}
-    AUTH -->|No| R403["Reject request"]
+    AUTH -->|No| R403["Reject — 403"]
     AUTH -->|Yes| ACTIVE{Active patient session?}
-    ACTIVE -->|No| R400["Reject: no active session"]
+    ACTIVE -->|No| R400["Reject — 400"]
     ACTIVE -->|Yes| EXTRACT["Extract vital signs"]
 
     EXTRACT --> STATUS_EVAL["Evaluate vital status"]
@@ -705,10 +740,17 @@ flowchart TD
 
     OOD{Safety override required?}
     OOD -->|Yes| OVERRIDE["Override prediction to Anomaly"]
-    OOD -->|No| ALERT_GATE
-    OVERRIDE --> ALERT_GATE
+    OOD -->|No| END(["Pass to alert handling"])
+    OVERRIDE --> END
+```
 
-    ALERT_GATE{Alert condition detected?}
+### 10b. Alert Handling & Storage
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': {'fontSize': '20px'}}}%%
+flowchart TD
+    START(["Vital processing complete"]) --> ALERT_GATE{Alert condition detected?}
+
     ALERT_GATE -->|Yes| UPSERT["Log alert to central database"]
     UPSERT --> IS_NEW{New alert?}
     IS_NEW -->|Yes| FIRE_NOTIFY["Dispatch alert notification"]
@@ -719,7 +761,7 @@ flowchart TD
     WRITE_LOCAL["Write reading to local time-series store"]
     WRITE_LOCAL --> ENQUEUE["Enqueue reading for cloud sync"]
     ENQUEUE --> STATE_UPDATE["Update live session state"]
-    STATE_UPDATE --> RETURN_200(["Return success"])
+    STATE_UPDATE --> RETURN_200(["Return 200 — success"])
 ```
 
 ---
