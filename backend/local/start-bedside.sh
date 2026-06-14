@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 echo "→ Killing anything on ports 8000 and 3001..."
 lsof -ti:8000 | xargs kill -9 2>/dev/null || true
