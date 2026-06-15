@@ -87,7 +87,7 @@ export function GaugeCard({ metric, value, unit, label, min, max, normalRange, w
             className="text-3xl font-black tabular-nums leading-none"
             style={{ color, fontFamily: "'Space Grotesk', monospace" }}
           >
-            {value !== null ? (metric === "temperature" ? value.toFixed(1) : Math.round(value)) : "--"}
+            {value !== null ? (metric === "bpm" ? Math.round(value) : value.toFixed(1)) : "--"}
           </motion.span>
           <span className="text-xs font-medium mt-0.5" style={{ color: "#909097" }}>{unit}</span>
         </div>

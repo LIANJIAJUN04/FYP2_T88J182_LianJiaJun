@@ -32,7 +32,8 @@ async def register_patient(body: PatientIn, request: Request):
     patient_id = patient["id"]
     open_session(patient_id)
 
-    request.app.state.active_patient_id = patient_id
+    request.app.state.active_patient_id   = patient_id
     request.app.state.active_patient_name = patient["name"]
+    request.app.state.device_disconnected = False
 
     return {"patient_id": patient_id, "status": "registered"}

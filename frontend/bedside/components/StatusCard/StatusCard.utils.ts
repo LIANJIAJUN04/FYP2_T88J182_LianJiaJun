@@ -37,4 +37,13 @@ export const statusConfig: Record<Status, StatusConfig> = {
     pulse: false,
     glow: "0 0 40px rgba(190,198,224,0.08)",
   },
+  disconnected: {
+    label: "OFFLINE",
+    bg: "linear-gradient(135deg, #111118 0%, #1a1a26 100%)",
+    border: "rgba(148,163,184,0.2)",
+    textColor: "#64748b",
+    dotColor: "#475569",
+    pulse: false,
+    glow: "0 0 40px rgba(71,85,105,0.1)",
+  },
 };

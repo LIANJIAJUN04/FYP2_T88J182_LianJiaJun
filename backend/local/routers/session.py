@@ -26,8 +26,9 @@ async def login(body: LoginIn, request: Request):
 
     open_session(patient["id"])
 
-    request.app.state.active_patient_id = patient["id"]
+    request.app.state.active_patient_id   = patient["id"]
     request.app.state.active_patient_name = patient["name"]
+    request.app.state.device_disconnected = False
 
     return {"patient_id": patient["id"], "name": patient["name"], "status": "ok"}
 

@@ -21,9 +21,8 @@ from supabase_client import close_active_session
 
 # Sessions auto-close after this many seconds of silence from the device.
 # This is a safety-net for cases where the bridge process itself crashes
-# without posting /api/device/disconnect.  Explicit disconnect notifications
-# (SerialException in serial_bridge, LWT in mqtt_bridge) close sessions
-# immediately and will typically fire well before this threshold.
+# without posting /api/device/disconnect.  The MQTT LWT path fires first
+# and will typically close the session well before this threshold.
 _DEVICE_TIMEOUT_SECONDS = 300
 
 app = FastAPI(title="MediSync Local API")
@@ -45,6 +44,7 @@ app.state.active_patient_id   = None
 app.state.active_patient_name = None
 app.state.last_reading        = None
 app.state.last_reading_at     = None   # datetime of last valid reading; drives watchdog
+app.state.device_disconnected = False  # True after LWT/disconnect until next session login
 app.state.ml_model            = None   # populated at startup
 
 # ── Routers ───────────────────────────────────────────────────────────────────
@@ -81,6 +81,7 @@ async def _heartbeat_watchdog() -> None:
                 app.state.active_patient_name = None
                 app.state.last_reading        = None
                 app.state.last_reading_at     = None
+                app.state.device_disconnected = True
 
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────

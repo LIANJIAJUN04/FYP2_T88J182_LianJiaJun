@@ -29,6 +29,7 @@ async def device_disconnect(request: Request):
         request.app.state.active_patient_name = None
         request.app.state.last_reading        = None
         request.app.state.last_reading_at     = None
+        request.app.state.device_disconnected = True
     else:
         logger.debug("[device] Disconnect event received but no active session")
 

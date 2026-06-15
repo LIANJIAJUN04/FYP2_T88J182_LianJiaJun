@@ -64,6 +64,7 @@ The system operates across two independent display modes with empirically measur
 ### 📡 MQTT Transport with LWT
 - ESP32 publishes to `medisync/readings` every second; Last Will and Testament configured on `medisync/status`
 - Session auto-closes within ~22 s of device power loss via MQTT LWT → `POST /api/device/disconnect`
+- Bedside `StatusCard` immediately flips to **OFFLINE** on the next SSE tick after disconnect is received
 - 5-minute heartbeat watchdog in FastAPI catches cases where the bridge crashes without sending LWT
 
 ### 🛡️ Offline Resilience
@@ -296,6 +297,8 @@ supabase/migrations/20260529000000_sessions_realtime.sql
 
 ### 8. ESP32 firmware
 
+> `firmware/main/main.ino` and `firmware/main/config.h` are gitignored. Create both files locally — do not commit them.
+
 1. Open `firmware/main/main.ino` in Arduino IDE
 2. Edit `firmware/main/config.h` — fill in your WiFi credentials and the bedside machine LAN IP:
    ```cpp
@@ -453,7 +456,6 @@ MediSync/
 │   │   ├── config.h          # WiFi SSID/password, MQTT broker IP, device credentials, LED pins
 │   │   └── sensors.h         # sensorsBegin/Update, readSpO2/BPM/Temperature
 │   ├── i2c_scan/             # Utility sketch — verify sensor I2C addresses before flashing
-│   ├── serial_bridge.py      # Deprecated — USB serial bridge (ESP32 now uses WiFi + MQTT only)
 │   └── mqtt_bridge.py        # MQTT bridge — forwards readings to FastAPI, handles LWT disconnect
 │
 ├── backend/
@@ -498,8 +500,9 @@ MediSync/
 │   │   │   ├── login/        # IC number + nurse password
 │   │   │   └── dashboard/    # StatusCard + GaugeCards + LiveChart
 │   │   ├── components/
-│   │   │   ├── StatusCard/   # Live rule-based status (SSE-driven)
-│   │   │   ├── GaugeCard/    # SVG arc gauge — SpO₂, BPM, Temp
+│   │   │   ├── StatusCard/   # SSE-driven status — NORMAL / WARNING / DANGER / OFFLINE
+│   │   │   ├── AlertBadge/   # ML anomaly detection badge (prediction + confidence)
+│   │   │   ├── GaugeCard/    # SVG arc gauge — SpO₂ (1 dp), BPM (integer), Temp (1 dp)
 │   │   │   └── LiveChart/    # Recharts scrolling time-series (last 60 readings)
 │   │   └── proxy.ts          # Redirect /dashboard → / if no active patient
 │   │
@@ -587,6 +590,9 @@ Confirm `ANTHROPIC_API_KEY` is set in the Railway dashboard environment variable
 ### MQTT bridge — stale LWT fires on startup
 This is expected behaviour. The MQTT broker replays retained messages to new subscribers on connection. The bridge guards against this: if `msg.retain == 1`, the offline LWT is stale and is silently skipped. Only a live non-retained offline message triggers `POST /api/device/disconnect`.
 
+### Bedside monitor — StatusCard stuck on last status after device powers off
+When the ESP32 loses power, the MQTT bridge fires `POST /api/device/disconnect` after the LWT grace period (~22 s). The bedside `StatusCard` then switches to **OFFLINE** within one SSE tick (≤ 1 s). If it stays on NORMAL/WARNING/DANGER after 30+ seconds, verify that `mqtt_bridge.py` is running and that Mosquitto is reachable (`docker compose ps`).
+
 ### Admin frontend — SSE stream shows stale data
 The admin `StatusCard` displays an offline indicator when the reading timestamp (`ts`) is more than 15 seconds behind wall-clock time. This is by design — it signals that the ESP32 has gone offline or the cloud SSE chain is interrupted.
 
@@ -612,12 +618,12 @@ Gmail requires an **App Password**, not your account password. Enable 2-Step Ver
 
 ## 📝 Notes
 
+- **Firmware gitignore:** Both `firmware/main/main.ino` and `firmware/main/config.h` are gitignored — they contain WiFi credentials and the local MQTT broker IP. Create and flash these files locally via Arduino IDE; they are never committed to the repository.
 - **Port assignments:** Bedside InfluxDB UI → `http://localhost:8087` · Bedside FastAPI → `http://localhost:8000` · Bedside Next.js → `http://localhost:3001` · Admin Next.js (dev) → `http://localhost:3002`
 - **In-memory session state:** `app.state.active_patient_id` is cleared on FastAPI restart — the nurse must log in again. Only one patient can be monitored per bedside machine at a time.
 - **ML artefacts:** `ml/*.joblib` files are present in the repository. If you need to retrain, re-run all cells in `ml/health_risk_ml.ipynb`.
 - **`status.py` duplication:** `backend/local/status.py` and `backend/cloud/status.py` are identical files — keep them in sync manually.
 - **Rate limiter removed:** `POST /api/readings` has no rate limiter. It is secured by `X-Device-Secret` header. The limiter was removed because it caused false 429s during MQTT reconnect bursts from a trusted device.
-- **Deprecated:** `firmware/serial_bridge.py` (USB serial bridge) is no longer used. The ESP32 runs WiFi + MQTT exclusively. The file is kept for reference.
 - **Cloud sync worker:** Uses `InfluxDBClientAsync` (aiohttp) with a persistent connection pool and 60 s timeout — avoids per-write TLS handshake overhead that caused intermittent timeouts with the old synchronous client.
 - **Session `closed_reason` vocabulary:** `"manual_logout"` · `"device_disconnect"` · `"auto_timeout"` — use these exact strings everywhere.
 - **Alert audit trail:** `PUT /api/alerts/resolve-all/{patient_id}` only sets `resolved_at` — rows are never deleted. The full alert history is a medical audit trail.

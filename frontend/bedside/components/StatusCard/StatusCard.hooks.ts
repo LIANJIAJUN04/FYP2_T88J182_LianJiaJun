@@ -32,11 +32,17 @@ export function useSSEStream() {
 
       es.onmessage = (e) => {
         try {
-          const data: StreamReading = JSON.parse(e.data);
-          setLatest(data);
-          setStatus(data.status as Status);
+          const data = JSON.parse(e.data);
+          if (data.status === "disconnected") {
+            setStatus("disconnected");
+            setLatest(null);
+            return;
+          }
+          const reading = data as StreamReading;
+          setLatest(reading);
+          setStatus(reading.status as Status);
           setReadings((prev) => {
-            const next = [...prev, data];
+            const next = [...prev, reading];
             return next.slice(-60);
           });
         } catch (err) {

@@ -68,7 +68,7 @@ REQUEST_TIMEOUT = 5
 # A brief WiFi blip causes the ESP32 to reconnect in <20 s — any reading
 # arriving in this window cancels the timer and the session stays open.
 # Only a true power-off produces no readings for the full grace period.
-LWT_GRACE_SECONDS = 30
+LWT_GRACE_SECONDS = 22
 
 
 # ── LWT grace-period timer ────────────────────────────────────────────────────

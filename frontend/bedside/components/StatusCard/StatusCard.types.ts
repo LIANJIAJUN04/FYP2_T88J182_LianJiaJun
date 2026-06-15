@@ -1,4 +1,4 @@
-export type Status = "normal" | "warning" | "danger" | "connecting";
+export type Status = "normal" | "warning" | "danger" | "connecting" | "disconnected";
 
 export interface StatusConfig {
   label: string;

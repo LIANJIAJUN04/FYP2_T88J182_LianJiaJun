@@ -52,7 +52,7 @@ export default function DashboardPage() {
     );
   }
 
-  const isConnected = status !== "connecting";
+  const isConnected = status !== "connecting" && status !== "disconnected";
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#131315" }}>
@@ -90,15 +90,19 @@ export default function DashboardPage() {
 
         <div className="flex items-center gap-4">
           {/* Connection indicator */}
-          <div className="flex items-center gap-1.5 text-xs" style={{ color: isConnected ? "#22c55e" : "#909097" }}>
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: isConnected ? "#22c55e" : status === "disconnected" ? "#ef4444" : "#909097" }}>
             {isConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">{isConnected ? "Live" : "Connecting…"}</span>
+            <span className="hidden sm:inline">
+              {isConnected ? "Live" : status === "disconnected" ? "Device offline" : "Connecting…"}
+            </span>
           </div>
 
           {/* Patient info */}
           <div className="text-right hidden sm:block">
             <p className="text-sm font-semibold" style={{ color: "#e4e2e4", fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}>{patient.name}</p>
-            <p className="text-xs" style={{ color: "#909097" }}>Active session</p>
+            <p className="text-xs" style={{ color: status === "disconnected" ? "#ef4444" : "#909097" }}>
+              {status === "disconnected" ? "Device disconnected" : "Active session"}
+            </p>
           </div>
 
           {/* Logout */}

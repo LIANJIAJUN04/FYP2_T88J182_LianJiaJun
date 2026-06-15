@@ -15,8 +15,9 @@ build/
 .env.local
 .env.*.local
 
-# Firmware credentials (WiFi SSID/password, MQTT broker IP — fill locally, never commit)
+# Firmware — credentials and sketch with hardcoded WiFi/MQTT details (fill locally, never commit)
 firmware/main/config.h
+firmware/main/main.ino
 
 # ML model artefacts (retrain locally)
 backend/local/ml/model.pkl

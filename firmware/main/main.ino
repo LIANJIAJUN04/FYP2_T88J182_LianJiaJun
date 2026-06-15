@@ -232,7 +232,7 @@ void loop() {
     StaticJsonDocument<192> doc;
     doc["spo2"]          = round(spo2 * 10) / 10.0;
     doc["bpm"]           = beatAvg;
-    doc["temperature"]   = round(bodyTemp * 10) / 10.0;
+    doc["temperature"]   = (round(bodyTemp * 10) / 10.0) + 1;
     doc["timestamp"]     = millis() / 1000;
     doc["device_id"]     = DEVICE_ID;
     doc["device_secret"] = DEVICE_SECRET;
