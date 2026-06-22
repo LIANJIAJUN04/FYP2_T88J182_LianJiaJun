@@ -51,11 +51,6 @@ influxdb_data/
 
 # Logs
 *.log
-
-# Local planning notes (not for repo)
-fyp_todo.md
-github_files_todo.md
-
 .claude/
 
 # Runtime SQLite queue — not source code
