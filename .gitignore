@@ -22,8 +22,13 @@ firmware/main/main.ino
 # ML model artefacts (retrain locally)
 backend/local/ml/model.pkl
 backend/cloud/ml/model.pkl
-ml/data/*.csv
+ml/raw/*.csv
+ml/raw/*.xlsx
+ml/collected_data/*.csv
 ml/results/
+ml/catboost_info/
+ml/.venv_repro/
+ml/health_risk_ml_REPRO.ipynb
 
 # Node / Next.js
 node_modules/
@@ -50,6 +55,8 @@ influxdb_data/
 # Local planning notes (not for repo)
 fyp_todo.md
 github_files_todo.md
+
+.claude/
 
 # Runtime SQLite queue — not source code
 backend/local/sync_queue.db

@@ -631,6 +631,81 @@ Gmail requires an **App Password**, not your account password. Enable 2-Step Ver
 
 ---
 
+## 🔁 Reproducibility
+
+This section gives an independent reviewer everything needed to reproduce the ML results in the thesis (Phase 9) from the raw data, byte-for-byte.
+
+### Hardware
+
+| Role | Device |
+|---|---|
+| ML training (`ml/health_risk_ml.ipynb`) | HP Victus 16-d1069TX — Intel Core i5-12500H, NVIDIA GeForce RTX 3050 4GB, 16GB RAM, 512GB NVMe SSD |
+| Bedside inference (`backend/local`, FastAPI + InfluxDB + Mosquitto) | Same machine as above — CPU-only inference, GPU not used at runtime |
+| Edge device | ESP32 (sensor acquisition + MQTT publish only — no inference on-device) |
+
+No GPU acceleration is used anywhere in this pipeline — XGBoost/LightGBM/CatBoost training and inference are both CPU-only. The RTX 3050 is listed for completeness since it is part of the training machine's spec, not because it was used.
+
+### Random seed
+
+`GLOBAL_SEED = 42` is set once at the top of `ml/health_risk_ml.ipynb` (Section 1) and propagated to `PYTHONHASHSEED`, `random.seed()`, `numpy.random.seed()`, and every `random_state` / `random_seed` parameter passed to scikit-learn, XGBoost, LightGBM, and CatBoost. No other seed is used anywhere in the pipeline.
+
+### Dataset — permanent citation
+
+All three datasets used in this thesis (two Kaggle training sources + the project's own collected sensor data) are archived together in a **single combined Zenodo deposit**, since Kaggle does not issue DOIs and does not guarantee a dataset page stays available indefinitely.
+
+| Dataset | Role | Permanent citation |
+|---|---|---|
+| `human_vital_signs_dataset_2024.csv` (200,020 rows) | Training + internal test split | nasirayub2 (2024). *Human Vital Sign Dataset*. Kaggle. Archived snapshot: Zenodo DOI `10.5281/zenodo.20793920` |
+| `patients_data_with_alerts.xlsx` (~50,000 rows) | External domain-shift validation only — never trained on | prokashbarmancu. *IoMT Dataset for ML-Based Health Monitoring*. Kaggle. Archived snapshot: Zenodo DOI `10.5281/zenodo.20793920` |
+| `medisync_collected_readings.csv` (7,285 readings, 5 anonymised subjects) | Project's own real sensor data — not used in training, included for transparency/audit | Lian, J. (2026). *Real-Time Health Monitoring via Wearable IoT with Cloud Analytics — Dataset*. Zenodo DOI `10.5281/zenodo.20793920` |
+
+> All three rows share the **same DOI** (`10.5281/zenodo.20793920`) — they are files within one combined deposit, not three separate DOIs. This is the version-specific DOI (Zenodo also assigns a concept DOI, `10.5281/zenodo.20793919`, that always resolves to the latest version — cite the version DOI above for exact reproducibility).
+
+The collected readings (`medisync_collected_readings.csv`) are exportable via `python ml/export_collected_dataset.py` — it pulls every point from the `health_readings` measurement and anonymises `patient_id` into sequential `subject_NN` IDs. Consent from all test subjects and a supervisor/ethics check were completed before this file was included in the public deposit. Full data provenance — folder contents, dataset roles, and public dataset citations — is documented in `ml/zenodo_to_pdf.md`.
+
+### Pinned environments
+
+Three separate environments are pinned, each verified against the exact library version installed:
+
+| Environment | File |
+|---|---|
+| Bedside backend (FastAPI + ML inference) | `backend/local/requirements.txt` |
+| Cloud backend (FastAPI + Claude API) | `backend/cloud/requirements.txt` |
+| ML training/validation notebook | `ml/requirements.txt` |
+
+`ml/requirements.txt` was independently verified on 2026-06-22: a clean virtual environment installed with exactly those pinned versions, on Python 3.12.3, reproduces `ml/model_metadata.json` byte-for-byte from the two raw Kaggle files (same `cv_auc_mean = 0.7144`, `ds2_external_recall = 0.7183`, etc.) and regenerates every figure in `ml/results/`. Newer `matplotlib` (≥3.9) and `pandas` (≥2.3) break this notebook — `matplotlib` removed the `boxplot(labels=...)` kwarg and `pandas` turned silent int→float column upcasting into a hard `TypeError` — so do not upgrade these without re-verifying end-to-end.
+
+### Reproducing the ML results from scratch
+
+```bash
+# 1. Get the raw data — either the Zenodo snapshot (preferred, DOI 10.5281/zenodo.20793920)
+#    or download both files directly from the Kaggle URLs in the table above
+mkdir -p ml/raw
+# place human_vital_signs_dataset_2024.csv and patients_data_with_alerts.xlsx into ml/raw/
+
+# 2. Set up the pinned ML environment
+python3 -m venv ml/.venv
+source ml/.venv/bin/activate
+pip install -r ml/requirements.txt
+
+# 3. Run the full notebook end-to-end (18 sections, ~10-15 min on a 4-core cap)
+jupyter nbconvert --to notebook --execute --ExecutePreprocessor.timeout=3600 \
+  --output health_risk_ml_repro.ipynb ml/health_risk_ml.ipynb
+```
+
+Running on a memory-constrained machine: Section 7's `RandomizedSearchCV` defaults to `n_jobs=-1` (all CPU cores), which can exceed 16GB RAM when run alongside a browser/IDE. Cap parallelism if needed:
+
+```bash
+LOKY_MAX_CPU_COUNT=4 OMP_NUM_THREADS=4 jupyter nbconvert --to notebook --execute ...
+```
+
+Outputs land in `ml/results/`:
+- `health_risk_model.joblib`, `health_risk_scaler.joblib`, `health_risk_label_encoder.joblib` — trained artefacts (already committed at `ml/*.joblib` for direct use without retraining)
+- `model_metadata.json` — every metric quoted in the thesis (CV AUC, external AUC, recall, etc.)
+- `fig_*.png` — every figure referenced in the thesis ML chapter (ROC curves, calibration, SHAP importance, confusion matrices, threshold tuning, robustness, streaming inference, etc.) — one notebook run regenerates all of them
+
+---
+
 ## 🚀 Deployment
 
 | Service | Platform | URL |
