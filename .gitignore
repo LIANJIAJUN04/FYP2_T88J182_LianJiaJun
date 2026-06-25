@@ -22,9 +22,7 @@ firmware/main/main.ino
 # ML model artefacts (retrain locally)
 backend/local/ml/model.pkl
 backend/cloud/ml/model.pkl
-ml/raw/*.csv
-ml/raw/*.xlsx
-ml/collected_data/*.csv
+ml/collected_data/_patient_id_mapping_DO_NOT_PUBLISH.csv
 ml/results/
 ml/catboost_info/
 ml/.venv_repro/
